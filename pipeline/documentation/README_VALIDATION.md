@@ -1,0 +1,184 @@
+# FirstBlood Numerical Stability Validator
+
+**Location**: `/home/maryyds/final/first_blood/pipeline/validation.py`
+
+**Purpose**: Assess numerical correctness and convergence of FirstBlood hemodynamic simulations without physiological assumptions.
+
+## Quick Start
+
+```bash
+cd /home/maryyds/final/first_blood/pipeline
+
+# Validate patient_025 results
+python3 validation.py /path/to/results/patient_025 ./output
+
+# Validate with default output directory (current working directory)
+python3 validation.py /path/to/results/patient_XXX
+```
+
+## Outputs
+
+The validator generates the following files in `pipeline/output/`:
+
+### Main Report
+- **`numerical_stability_report.txt`** — Complete validation report with:
+  - Step 0: Output schema inspection
+  - Step 1: Global stability checks (NaN/Inf, blow-up, time stepping)
+  - Step 2: Periodic convergence analysis
+  - Step 3: Mass conservation assessment
+
+### CSV Summaries
+- **`convergence_summary.csv`** — Per-signal convergence metrics:
+  - signal: Signal name (vessel or heart output)
+  - status: PASS/WARN/FAIL
+  - period_s: Estimated cardiac period (seconds)
+  - cycles_detected: Number of complete cycles extracted
+  - mean_rms_pct: Average cycle-to-cycle RMS% error
+
+### Diagnostic Plots (PNG)
+- **`signal_overlay_*.png`** — Overlay of last 3-5 cycles per signal
+  - Shows visual convergence/stability
+  - Normalized time within cycle
+  
+- **`rms_convergence_*.png`** — RMS% error per cycle pair
+  - Green dashed line: PASS target (0.1%)
+  - Orange dashed line: WARN threshold (1.0%)
+  - Log scale for error visualization
+  
+- **`dt_histogram.png`** — Time step distribution
+  - Histogram of Δt values
+  - Time series of Δt showing consistency
+
+## Validation Criteria
+
+### STEP 1: Global Stability
+**PASS**: All signals pass if:
+- ✓ No NaN or Inf values
+- ✓ No blow-up (max|signal| < 1e10)
+- ✓ Time is monotone increasing
+- ✓ Time stepping Δt has <50% variation
+
+**Status levels**:
+- `PASS`: All checks pass, time stepping is consistent
+- `WARN`: Passes stability but has >50% Δt variation (irregular stepping)
+- `FAIL`: Contains NaN/Inf, blow-up, or non-monotone time
+
+### STEP 2: Periodic Convergence
+**PASS**: RMS% < 0.1% on last 2 cycle comparisons
+
+**Status levels**:
+- `PASS`: Mean RMS% < 0.1%
+- `WARN`: Mean RMS% < 1.0% OR clearly decreasing trend
+- `FAIL`: Mean RMS% ≥ 1.0% AND not decreasing
+- `INSUFFICIENT_DATA`: Could not estimate period or extract cycles
+
+**RMS% formula**:
+```
+RMS%(cycle_i, cycle_{i+1}) = 100 × RMS(cycle_i - cycle_{i+1}) / mean(|cycle_{i+1}|)
+```
+
+### STEP 3: Mass Conservation
+- Currently deferred — requires explicit topology map
+- Can be verified manually using flow summation at known branch points
+
+## Schema Inspection (STEP 0)
+
+The validator automatically:
+1. Lists arterial and heart output subfolders
+2. Selects representative files (first/last vessel, aorta, LV pressure)
+3. Reports per-column statistics:
+   - Min/max/mean/std
+   - NaN/Inf status
+   - Monotonicity of time column
+4. Displays first 3 rows for manual verification
+
+## Examples
+
+### Successful Run
+```
+FIRSTBLOOD NUMERICAL STABILITY VALIDATION
+Results: /path/to/patient_025
+Output:  /path/to/output
+
+STEP 1: GLOBAL STABILITY CHECKS
+A1_proximal:
+  ✓ Numerically stable (no NaN/Inf/blow-up)
+    Time range: [0.000000e+00, 1.031700e+01] s
+    Δt: mean=1.000000e-03 s, std=4.818899e-16 s
+    ✓ Δt consistent (variation < 50%)
+
+STEP 2: PERIODIC CONVERGENCE CHECK
+A1_proximal:
+  Estimated period: 7.870000e-01 s
+  ✓ Extracted 5 cycles
+  Cycle-to-cycle RMS% errors:
+    Cycle 0 → 1: 0.1916%
+    Cycle 1 → 2: 0.1667%
+    Cycle 2 → 3: 0.1665%
+    Cycle 3 → 4: 0.1665%
+  Mean RMS%: 0.1728% → Status: WARN
+```
+
+### Interpretation
+- **Global stability**: ✓ PASS — No numerical issues
+- **Convergence**: ⚠️ WARN — RMS% is 0.17%, above 0.1% target
+  - This indicates proximal signals (aorta) still settling
+  - Distal signals (periphery) show better convergence
+  - This is normal; longer simulations improve convergence
+
+## Key Differences from Physics Validator
+
+This validator:
+- ✓ Does NOT assume which vessel is the aorta
+- ✓ Does NOT convert units
+- ✓ Does NOT subtract baselines or apply corrections
+- ✓ Does NOT check physiological ranges
+- ✓ Focuses purely on numerical correctness
+
+This allows assessment of simulator behavior independent of:
+- Parameter uncertainties
+- Physiological variability
+- Output schema details
+
+## Troubleshooting
+
+**"Could not estimate period"**
+- Signal lacks clear oscillation (e.g., windkessel outlet showing constant flow)
+- Solution: Check distal vessel signals instead
+
+**High RMS% errors**
+- Simulation has not converged to periodic solution
+- Normal if simulation is short or initial transient is still present
+- Solution: Run simulation longer or analyze only later cycles
+
+**Empty CSV files**
+- Some old validation CSV files from earlier runs
+- These are generated by older validation code; can be ignored
+- New validation outputs: `convergence_summary.csv` + PNG plots
+
+## Advanced: Running on New Patient
+
+```bash
+# After generating results for patient_XXX:
+cd /home/maryyds/final/first_blood
+python3 pipeline/validation.py \
+  /path/to/results/patient_XXX \
+  pipeline/output
+```
+
+Output files automatically named by signal, so multiple patients can be processed:
+- Results in `pipeline/output/convergence_summary.csv`
+- Plots in `pipeline/output/signal_overlay_*.png` etc.
+
+## Integration with Pipeline
+
+This validator is the canonical numerical correctness assessment for FirstBlood.
+Use outputs to:
+1. **Verify solver stability** before running patient cohort studies
+2. **Track convergence** as simulation duration increases
+3. **Compare configurations** (time stepping, grid resolution, etc.)
+4. **Document simulation quality** for publications
+
+---
+
+**Questions?** Check `numerical_stability_report.txt` for full diagnostic details.

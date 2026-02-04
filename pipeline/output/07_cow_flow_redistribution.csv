@@ -1,0 +1,6 @@
+checkpoint,r_ica_m3_s,l_ica_m3_s,asymmetry_pct,balanced,status,r_mca_m3_s,l_mca_m3_s,acom_flow_m3_s,is_active,flow_m3_s,note
+L/R_ICA_balance,0.26824637206145674,0.22081941581516545,9.697459385828314,True,PASS,,,,,,
+L/R_MCA_balance,,,5.2636465589415895,True,PASS,0.11221171651309159,0.12468090699119805,,,,
+Acom_active,,,,,PASS,,,0.018463389866946327,True,,
+Collateral_A62,,,,,,,,,,-0.27902489334415437,Retrograde flow indicates collateral pathway
+Collateral_A63,,,,,,,,,,-0.018640943454545447,Retrograde flow indicates collateral pathway

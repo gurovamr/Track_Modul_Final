@@ -1,0 +1,17 @@
+Action,FirstBlood_ID,Name,Old_length_mm,New_length_mm,Old_diameter_mm,New_diameter_mm,Patient_key,Reason
+inject,A59,Basilar artery 1,5.0,2.0141999999999998,3.1,4.278,BA,
+inject,A56,Basilar artery 2,20.0,8.056799999999999,4.0,4.278,BA,
+inject,A60,Post. cerebral 1,2.0,12.901,1.9,1.88,R_P1,
+inject,A64,Post. cerebral 2,59.0,10.007,2.0,2.742,R_P2,
+inject,A61,Post. cerebral 1,2.0,7.155,1.9,3.484,L_P1,
+inject,A12,Internal carotid,178.0,11.216,5.7,4.67,R_ICA,
+inject,A70,Middle cerebral M1,8.0,6.981,3.0,3.79,R_MCA,
+inject,A16,Internal carotid,178.0,11.87,5.3,4.692,L_ICA,
+inject,A73,Middle cerebral M1,8.0,9.966,3.0,3.592,L_MCA,
+inject,A62,Post. communicating,4.0,7.234,1.2,2.524,R_Pcom,
+inject,A77,Ant. communicating,2.0,2.453,1.3,4.35,Acom,
+inject,A68,Ant. cerebral 1,12.0,14.006,2.1,2.862,R_A1,
+inject,A76,Ant. cerebral A2,24.0,10.02,1.8,3.484,R_A2,
+inject,A69,Ant. cerebral 1,12.0,12.033,2.1,3.514,L_A1,
+inject,A78,Ant. cerebral A2,24.0,9.959,1.8,3.612,L_A2,
+mark_absent,A63,Post. communicating,,,1.2,0.1,L-Pcom_ABSENT,Anatomical variant - vessel absent

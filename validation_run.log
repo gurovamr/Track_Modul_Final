@@ -1,0 +1,113 @@
+================================================================================
+SECTION 1: OUTPUT SCHEMA DISCOVERY
+================================================================================
+
+Found 204 vessel output files
+
+Sample vessel (A1 - Aorta):
+  Time range: 0.0000 - 10.3170 s
+  Pressure range: -9.9 - 106.9 mmHg
+  Flow range: -0.000000 - 0.622051 m^3/s
+  Velocity range: -0.0000 - 0.0005 m/s
+  Radius (corrected): 0.014664 - 0.021119 m
+  Radius corrected (mm): 14.6635 - 21.1195 mm
+
+Note: 21.6x radius correction applied
+  Raw output: 0.679mm -> Corrected: 14.7mm
+  Template A1: 14.7mm (diameter 29.4mm) - RESTORED
+
+================================================================================
+SECTION 2: NUMERICAL CORRECTNESS
+================================================================================
+
+NaN/Inf check: NaN=0, Inf=0
+  [PASS] No NaN or Inf values detected
+
+Periodic convergence (Aortic pressure):
+  [WARN] Could not extract cycles (found 4)
+
+================================================================================
+SECTION 3: GLOBAL PHYSIOLOGY
+================================================================================
+
+Aortic pressure (mmHg, gauge):
+  Systolic: 106.9 (expected 110-130)
+  Diastolic: 53.2 (expected 65-85)
+  Mean: 81.0 (expected 90-100)
+  [WARN] Some pressures outside normal range:
+    - Systolic 106.9 mmHg (expected 110-130)
+    - Diastolic 53.2 mmHg (expected 65-85)
+    - Mean 81.0 mmHg (expected 90-100)
+
+Cardiac output:
+  Mean aortic flow: 0.080011 m^3/s = 4.801 L/s
+  Cardiac output: 4800.64 L/min (expected 4-6)
+  [WARN] CO outside range (expected 4-6 L/min)
+
+Heart rate:
+  Estimated cycle period: 2.579 s
+  Heart rate: 23 bpm (expected 60-100)
+  [WARN] Heart rate unusual
+
+================================================================================
+SECTION 4: WAVEFORM MORPHOLOGY
+================================================================================
+
+Aortic pressure waveform:
+  Pulse pressure: 53.7 mmHg
+  [PASS] Pulse pressure physiological (>30 mmHg)
+
+Aortic velocity:
+  Peak velocity: 0.000 m/s (expected 0.8-1.5)
+  [WARN] Peak velocity unusual
+
+================================================================================
+SECTION 5: CIRCLE OF WILLIS PLAUSIBILITY
+================================================================================
+
+Loading CoW vessel data...
+
+CoW vessel flows (final cycle, m^3/s):
+  A12 (R-ICA): 0.269798 m^3/s
+  A16 (L-ICA): 0.222484 m^3/s
+  A56 (BA2): 0.095222 m^3/s
+  A59 (BA1): 0.044189 m^3/s
+  A60 (R-P1): -0.166440 m^3/s [ABSENT?]
+  A61 (L-P1): 0.089441 m^3/s
+  A62 (R-Pcom): -0.280075 m^3/s [ABSENT?]
+  A63 (L-Pcom): -0.029919 m^3/s [ABSENT?]
+  A64 (R-P2): 0.110963 m^3/s
+  A65 (L-P2): 0.189660 m^3/s
+  A68 (R-A1): 0.099977 m^3/s
+  A69 (L-A1): 0.122335 m^3/s
+  A70 (R-MCA): 0.112711 m^3/s
+  A73 (L-MCA): 0.125230 m^3/s
+  A76 (R-A2): 0.069218 m^3/s
+  A77 (Acom): 0.018621 m^3/s
+  A78 (L-A2): 0.064413 m^3/s
+  [WARN] 3 CoW vessels with zero/near-zero flow
+
+L/R MCA asymmetry:
+  R MCA (A70): 0.112711 m^3/s
+  L MCA (A73): 0.125230 m^3/s
+  Asymmetry: 5.3%
+  [PASS] L/R balanced (<20% asymmetry)
+
+Anterior communicating artery (Acom):
+  A77 flow: 0.018621 m^3/s [carries flow]
+
+Posterior communicating arteries (Pcom):
+  R Pcom (A62): -0.280075 m^3/s
+  L Pcom (A63): -0.029919 m^3/s [may be absent in this patient]
+
+================================================================================
+GENERATING PLOTS
+================================================================================
+  Saved: aortic_pressure.png
+  Saved: aortic_flow.png
+  Saved: aortic_velocity.png
+  Saved: cow_flows_LR.png
+Traceback (most recent call last):
+  File "/home/maryyds/final/first_blood/validation/patient_validation.py", line 472, in <module>
+    RMS errors: {str([f'{e:.4f}%' for e in rms_errors]) if isinstance(rms_errors, np.ndarray) else "N/A"}
+NameError: name 'rms_errors' is not defined

@@ -1,0 +1,4 @@
+vessel_id,status,cycles_detected,mean_rms_error_pct,threshold_pct
+A1,WARN,12,2.309336352321836,1.0
+A12,WARN,37,29.323740017989152,1.0
+A70,WARN,26,35.6869766640372,1.0

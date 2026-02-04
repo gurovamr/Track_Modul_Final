@@ -1,0 +1,3 @@
+vessel_id,pulse_delay_s,expected_delay_s,delay_acceptable
+A12,0.0010000000000012221,>0,True
+A16,0.008000000000000895,>0,True
