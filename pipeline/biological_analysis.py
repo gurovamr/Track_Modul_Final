@@ -6,7 +6,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
-from scipy import signal
 import sys
 import argparse
 from dataclasses import dataclass
@@ -32,6 +31,10 @@ class HemodynamicMetrics:
     t_total: float
     n_steps: int
     dt_mean: float
+    pressure_file_used: Optional[str] = None
+    pressure_col_idx: Optional[int] = None
+    co_file_used: Optional[str] = None
+    co_col_idx: Optional[int] = None
 
 
 def list_models(results_base_path: Path) -> List[str]:
@@ -142,12 +145,51 @@ def detect_time_column(data: np.ndarray) -> Optional[int]:
     return None
 
 
+def select_pulsatile_column(data: np.ndarray, time_col_idx: int) -> Optional[int]:
+    """
+    Select the most pulsatile column (largest peak-to-peak amplitude).
+    Excludes time column and nearly constant signals.
+    Returns column index or None if not found.
+    """
+    if data.ndim != 2 or data.shape[0] < 10:
+        return None
+    
+    best_col_idx = None
+    best_amplitude = 0.0
+    
+    for col_idx in range(data.shape[1]):
+        if col_idx == time_col_idx:
+            continue
+        
+        col = data[:, col_idx]
+        
+        if np.any(np.isnan(col)) or np.any(np.isinf(col)):
+            continue
+        
+        col_std = np.std(col)
+        if col_std < 1e-10:
+            continue
+        
+        amplitude = np.max(col) - np.min(col)
+        
+        if amplitude > best_amplitude:
+            best_amplitude = amplitude
+            best_col_idx = col_idx
+    
+    return best_col_idx
+
+
 def choose_aortic_signals(results_dir: Path) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """
     Find aortic pressure and velocity/diameter files.
-    Searches for files matching aortic pattern names.
+    First checks heart_kim_lit/aorta.txt, then falls back to name-based heuristics.
     Returns (pressure_file, velocity_file, diameter_file) or (None, None, None).
     """
+    primary_aorta = results_dir / 'heart_kim_lit' / 'aorta.txt'
+    
+    if primary_aorta.exists():
+        return primary_aorta, None, None
+    
     files = discover_txt_files(results_dir)
     
     aorta_candidates = []
@@ -158,7 +200,7 @@ def choose_aortic_signals(results_dir: Path) -> Tuple[Optional[Path], Optional[P
     
     if not aorta_candidates:
         print("Warning: No aortic signals found in results.")
-        print("Searched for files containing: aorta, ao_, aortic, root")
+        print("Searched for: heart_kim_lit/aorta.txt and files containing: aorta, ao_, aortic, root")
         return None, None, None
     
     return aorta_candidates[0], None, None
@@ -173,6 +215,23 @@ def resample_uniform(time_col: np.ndarray, signal_col: np.ndarray,
     s_uniform = np.interp(t_uniform, time_col, signal_col)
     
     return t_uniform, s_uniform
+
+
+def numpy_find_peaks(signal: np.ndarray, distance: int = 5, height: float = 0.0) -> np.ndarray:
+    """
+    Find peaks in signal using numpy only.
+    Returns array of peak indices.
+    """
+    peaks = []
+    n = len(signal)
+    
+    for i in range(1, n - 1):
+        if signal[i] > signal[i - 1] and signal[i] > signal[i + 1]:
+            if signal[i] >= height:
+                if not peaks or (i - peaks[-1]) >= distance:
+                    peaks.append(i)
+    
+    return np.array(peaks)
 
 
 def estimate_period_autocorr(signal_data: np.ndarray, 
@@ -191,8 +250,8 @@ def estimate_period_autocorr(signal_data: np.ndarray,
     late_signal = signal_data[late_idx:]
     late_time = time_data[late_idx:]
     
-    late_signal = signal.detrend(late_signal)
-    late_signal = (late_signal - np.mean(late_signal)) / (np.std(late_signal) + 1e-16)
+    late_signal = late_signal - np.mean(late_signal)
+    late_signal = late_signal / (np.std(late_signal) + 1e-16)
     
     acf = np.correlate(late_signal, late_signal, mode='full')
     acf = acf[len(acf)//2:]
@@ -208,12 +267,13 @@ def estimate_period_autocorr(signal_data: np.ndarray,
     
     acf_window = acf[min_lag_samples:max_lag_samples]
     
-    peaks, properties = signal.find_peaks(acf_window, height=0.2, distance=5)
+    peaks = numpy_find_peaks(acf_window, distance=5, height=0.2)
     
     if len(peaks) == 0:
         return None
     
-    best_peak_idx = peaks[np.argmax(properties['peak_heights'])]
+    peak_heights = acf_window[peaks]
+    best_peak_idx = peaks[np.argmax(peak_heights)]
     lag_samples = best_peak_idx + min_lag_samples
     
     mean_dt = np.mean(np.diff(late_time))
@@ -231,8 +291,8 @@ def extract_last_cycle(signal_data: np.ndarray,
     if signal_data is None or len(signal_data) < 20:
         return None, None
     
-    peaks, _ = signal.find_peaks(signal_data, distance=5, 
-                                 prominence=np.max(signal_data)*0.05)
+    prominence_threshold = np.max(signal_data) * 0.05
+    peaks = numpy_find_peaks(signal_data, distance=5, height=prominence_threshold)
     
     if len(peaks) < 2:
         return None, None
@@ -258,8 +318,8 @@ def extract_two_cycles(signal_data: np.ndarray,
     if signal_data is None or len(signal_data) < 20:
         return None, None, None, None
     
-    peaks, _ = signal.find_peaks(signal_data, distance=5, 
-                                 prominence=np.max(signal_data)*0.05)
+    prominence_threshold = np.max(signal_data) * 0.05
+    peaks = numpy_find_peaks(signal_data, distance=5, height=prominence_threshold)
     
     if len(peaks) < 3:
         return None, None, None, None
@@ -363,6 +423,20 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     lines.append("=" * 80)
     lines.append("")
     
+    lines.append("DATA SOURCES")
+    lines.append("-" * 80)
+    if metrics.pressure_file_used:
+        lines.append("Aortic pressure file: {}".format(metrics.pressure_file_used))
+        if metrics.pressure_col_idx is not None:
+            lines.append("  Column index: {}".format(metrics.pressure_col_idx))
+    if metrics.co_file_used:
+        lines.append("Cardiac output file:  {}".format(metrics.co_file_used))
+        if metrics.co_col_idx is not None:
+            lines.append("  Column index: {}".format(metrics.co_col_idx))
+    else:
+        lines.append("Cardiac output file:  Not available (SV and CO not computed)")
+    lines.append("")
+    
     lines.append("SIMULATION METADATA")
     lines.append("-" * 80)
     lines.append("Total simulation time: {:.3f} s".format(metrics.t_total))
@@ -445,8 +519,12 @@ def make_plots(results_dir: Path, output_dir: Path,
     if time_col_idx is None:
         return
     
+    pressure_col_idx = select_pulsatile_column(data_p, time_col_idx)
+    if pressure_col_idx is None:
+        return
+    
     time_col = data_p[:, time_col_idx]
-    pressure_col = data_p[:, 1] if data_p.shape[1] > 1 else data_p[:, 0]
+    pressure_col = data_p[:, pressure_col_idx]
     
     pressure_col = (pressure_col - PRESSURE_BASELINE) / 133.322
     
@@ -562,8 +640,15 @@ def main():
         print("Error: Could not detect time column.")
         sys.exit(1)
     
+    pressure_col_idx = select_pulsatile_column(data_p, time_col_idx)
+    if pressure_col_idx is None:
+        print("Error: Could not detect pulsatile pressure column.")
+        sys.exit(1)
+    
+    print("Selected pressure column index: {}".format(pressure_col_idx))
+    
     time_col = data_p[:, time_col_idx]
-    pressure_col = data_p[:, 1] if data_p.shape[1] > 1 else data_p[:, 0]
+    pressure_col = data_p[:, pressure_col_idx]
     
     pressure_col = (pressure_col - PRESSURE_BASELINE) / 133.322
     
@@ -576,18 +661,56 @@ def main():
     
     p_cycle, t_cycle = extract_last_cycle(pressure_col, time_col)
     
+    sv_ml = None
+    co_lmin = None
+    co_file_used = None
+    co_col_idx = None
+    
+    co_file = results_dir / 'heart_kim_lit' / 'L_lv_aorta.txt'
+    if co_file.exists():
+        print("\nComputing cardiac output from: {}".format(co_file.name))
+        data_co = load_timeseries(co_file)
+        if data_co is not None:
+            co_time_col_idx = detect_time_column(data_co)
+            if co_time_col_idx is not None:
+                co_signal_idx = select_pulsatile_column(data_co, co_time_col_idx)
+                if co_signal_idx is not None:
+                    print("Selected CO flow column index: {}".format(co_signal_idx))
+                    co_time = data_co[:, co_time_col_idx]
+                    co_flow = data_co[:, co_signal_idx]
+                    
+                    co_cycle, co_t_cycle = extract_last_cycle(co_flow, co_time)
+                    if co_cycle is not None and co_t_cycle is not None:
+                        sv_m3 = np.trapz(co_cycle, co_t_cycle)
+                        sv_ml = abs(sv_m3) * 1e6
+                        
+                        if period is not None and period > 0:
+                            co_lmin = (sv_ml / 1000.0) * (60.0 / period)
+                        
+                        co_file_used = str(co_file.relative_to(results_dir))
+                        co_col_idx = co_signal_idx
+                        print("  SV: {:.1f} mL".format(sv_ml))
+                        print("  CO: {:.2f} L/min".format(co_lmin) if co_lmin else "  CO: N/A")
+    
+    if co_file_used is None:
+        print("\nCardiac output file not available: {}".format(co_file))
+    
     metrics = HemodynamicMetrics(
         HR=60.0 / period if period is not None else None,
         cycle_period=period,
         P_sys=float(np.max(p_cycle)) if p_cycle is not None else None,
         P_dia=float(np.min(p_cycle)) if p_cycle is not None else None,
         P_map=float(np.mean(p_cycle)) if p_cycle is not None else None,
-        SV_ml=None,
-        CO_lmin=None,
+        SV_ml=sv_ml,
+        CO_lmin=co_lmin,
         rms_convergence_pct=None,
         t_total=t_total,
         n_steps=n_steps,
         dt_mean=dt_mean,
+        pressure_file_used=str(pressure_file.relative_to(results_dir)),
+        pressure_col_idx=pressure_col_idx,
+        co_file_used=co_file_used,
+        co_col_idx=co_col_idx,
     )
     
     c1, t1, c2, t2 = extract_two_cycles(pressure_col, time_col)
@@ -600,6 +723,8 @@ def main():
     print("  Psys: {:.1f} mmHg".format(metrics.P_sys) if metrics.P_sys else "  Psys: N/A")
     print("  Pdia: {:.1f} mmHg".format(metrics.P_dia) if metrics.P_dia else "  Pdia: N/A")
     print("  Pmap: {:.1f} mmHg".format(metrics.P_map) if metrics.P_map else "  Pmap: N/A")
+    print("  SV: {:.1f} mL".format(metrics.SV_ml) if metrics.SV_ml else "  SV: N/A")
+    print("  CO: {:.2f} L/min".format(metrics.CO_lmin) if metrics.CO_lmin else "  CO: N/A")
     if metrics.rms_convergence_pct is not None:
         print("  Convergence RMS%: {:.4f}".format(metrics.rms_convergence_pct))
     
