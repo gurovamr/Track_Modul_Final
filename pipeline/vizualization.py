@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -622,111 +621,6 @@ def make_summary_metrics_figure(metrics: Dict[str, float], output_dir: Path):
     print("  [4] fig4_summary_metrics.png")
 
 
-def make_cerebral_flow_summary(output_root: Path, model_name: str, output_dir: Path):
-    """
-    Generate figure 5: Cerebral flow summary table and bar plot.
-    Loads cerebral_flow_summary.csv from biological_analysis output.
-    """
-    bio_analysis_dir = output_root / model_name / 'biological_analysis'
-    cerebral_csv = bio_analysis_dir / 'cerebral_flow_summary.csv'
-    
-    if not cerebral_csv.exists():
-        print("Warning: cerebral_flow_summary.csv not found, skipping fig5")
-        return
-    
-    try:
-        df = pd.read_csv(cerebral_csv)
-        if df.empty:
-            print("Warning: cerebral_flow_summary.csv is empty, skipping fig5")
-            return
-    except Exception:
-        print("Warning: Could not read cerebral_flow_summary.csv, skipping fig5")
-        return
-    
-    vessel_names = list(df.columns)
-    flows = df.iloc[0].values
-    
-    fig = plt.figure(figsize=(12, 8))
-    gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.5], hspace=0.3)
-    
-    ax_table = fig.add_subplot(gs[0])
-    ax_table.axis('off')
-    
-    table_data = []
-    colors_list = []
-    for i, (vessel, flow) in enumerate(zip(vessel_names, flows)):
-        if np.isnan(flow):
-            table_data.append([vessel, 'N/A'])
-            colors_list.append('#ffcccc')
-        else:
-            table_data.append([vessel, '{:.2f} mL/min'.format(flow)])
-            if flow < 0:
-                colors_list.append('#ccccff')
-            else:
-                colors_list.append('#ccffcc')
-    
-    table = ax_table.table(cellText=table_data,
-                           colLabels=['Vessel', 'Mean Flow'],
-                           cellLoc='left',
-                           loc='center',
-                           colWidths=[0.4, 0.6])
-    
-    table.auto_set_font_size(False)
-    table.set_fontsize(11)
-    table.scale(1, 2.5)
-    
-    for i in range(len(table_data)):
-        table[(i+1, 0)].set_facecolor(colors_list[i])
-        table[(i+1, 1)].set_facecolor(colors_list[i])
-    
-    table[(0, 0)].set_facecolor('#4472C4')
-    table[(0, 1)].set_facecolor('#4472C4')
-    table[(0, 0)].set_text_props(color='white', weight='bold')
-    table[(0, 1)].set_text_props(color='white', weight='bold')
-    
-    ax_bar = fig.add_subplot(gs[1])
-    
-    valid_indices = [i for i, f in enumerate(flows) if not np.isnan(f)]
-    valid_names = [vessel_names[i] for i in valid_indices]
-    valid_flows = [flows[i] for i in valid_indices]
-    
-    if valid_flows:
-        colors_bar = ['blue' if f < 0 else 'red' for f in valid_flows]
-        bars = ax_bar.barh(valid_names, valid_flows, color=colors_bar, alpha=0.7, edgecolor='black')
-        
-        ax_bar.axvline(x=0, color='k', linestyle='-', linewidth=1.2)
-        ax_bar.set_xlabel('Mean Flow (mL/min)', fontsize=12, fontweight='bold')
-        ax_bar.set_ylabel('Vessel', fontsize=12, fontweight='bold')
-        ax_bar.grid(True, alpha=0.3, axis='x')
-        ax_bar.tick_params(labelsize=10)
-        
-        for bar, flow in zip(bars, valid_flows):
-            width = bar.get_width()
-            label_x = width + (max(valid_flows) - min(valid_flows)) * 0.02
-            if width < 0:
-                label_x = width - (max(valid_flows) - min(valid_flows)) * 0.02
-            ax_bar.text(label_x, bar.get_y() + bar.get_height()/2,
-                       '{:.1f}'.format(flow),
-                       ha='left' if width >= 0 else 'right',
-                       va='center', fontsize=9, fontweight='bold')
-    else:
-        ax_bar.text(0.5, 0.5, 'No valid flow data available',
-                   ha='center', va='center', transform=ax_bar.transAxes,
-                   fontsize=12, color='red')
-        ax_bar.set_xlim(0, 1)
-        ax_bar.set_ylim(0, 1)
-        ax_bar.axis('off')
-    
-    fig.suptitle('Cerebral Flow Summary: {}'.format(model_name),
-                fontsize=14, fontweight='bold')
-    
-    output_file = output_dir / 'fig5_cerebral_flow_summary.png'
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print("  [5] fig5_cerebral_flow_summary.png")
-
-
 def read_csv_column(filepath: Path, column_name: str) -> Optional[List[str]]:
     """
     Read a single column from a CSV file.
@@ -823,7 +717,7 @@ def compute_graph_distance(edges_list: List[Tuple[str, str]], root_node: str) ->
 
 def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_name: str):
     """
-    Generate figure 6: Paper-style arterial tree with anatomical layout.
+    Generate figure 5: Paper-style arterial tree with anatomical layout.
     Head at top, torso in middle, legs at bottom.
     Vessels colored by mean flow direction (red forward, blue reversed, gray minimal).
     """
@@ -1239,11 +1133,11 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
               framealpha=0.95)
     
     plt.tight_layout()
-    output_file = output_dir / 'fig6_arterial_tree_paper_style.png'
+    output_file = output_dir / 'fig5_arterial_tree_paper_style.png'
     plt.savefig(output_file, dpi=200, bbox_inches='tight')
     plt.close()
     
-    print("  [6] fig6_arterial_tree_paper_style.png")
+    print("  [5] fig5_arterial_tree_paper_style.png")
 
 
 def make_network_schematic(model_dir: Path, output_dir: Path):
@@ -1353,7 +1247,7 @@ def make_network_schematic(model_dir: Path, output_dir: Path):
 
 def make_subsystem_routing_diagram(output_dir: Path):
     """
-    Generate figure 7: Subsystem routing diagram.
+    Generate figure 6: Subsystem routing diagram.
     Shows conceptual flow: Heart -> Body -> {Brain, Periphery}
     """
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -1392,16 +1286,16 @@ def make_subsystem_routing_diagram(output_dir: Path):
     ax.text(5, 9.5, 'FirstBlood Systemic Circulation', fontsize=16, fontweight='bold', ha='center')
     
     fig.tight_layout()
-    output_file = output_dir / 'fig7_subsystem_routing.png'
+    output_file = output_dir / 'fig6_subsystem_routing.png'
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print("  [7] fig7_subsystem_routing.png")
+    print("  [6] fig6_subsystem_routing.png")
 
 
 def make_multisite_waveform_panels(results_dir: Path, model_dir: Path, output_dir: Path, period: Optional[float] = None):
     """
-    Generate figure 8: Multi-site waveform panels.
+    Generate figure 7: Multi-site waveform panels.
     Shows pressure and flow/velocity at 5 arterial locations.
     """
     locations = [
@@ -1532,11 +1426,11 @@ def make_multisite_waveform_panels(results_dir: Path, model_dir: Path, output_di
     fig.suptitle('Multi-Site Waveform Panels', fontsize=16, fontweight='bold', y=0.995)
     fig.tight_layout()
     
-    output_file = output_dir / 'fig8_multisite_waveforms.png'
+    output_file = output_dir / 'fig7_multisite_waveforms.png'
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print("  [8] fig8_multisite_waveforms.png")
+    print("  [7] fig7_multisite_waveforms.png")
 
 
 def main():
@@ -1612,7 +1506,6 @@ def main():
     if metrics is not None:
         make_summary_metrics_figure(metrics, output_dir)
     
-    make_cerebral_flow_summary(output_root, model_name, output_dir)
     make_paper_style_arterial_tree(results_dir, output_dir, model_name)
     
     make_subsystem_routing_diagram(output_dir)

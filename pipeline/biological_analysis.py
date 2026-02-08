@@ -411,6 +411,83 @@ def compute_convergence_rms(cycle1: np.ndarray, cycle2: np.ndarray) -> float:
     return rms_pct
 
 
+def compute_cerebral_flow_summary(results_dir: Path, output_dir: Path, cycle_period: Optional[float]):
+    """
+    Compute mean cerebral flow over last cardiac cycle for key CoW vessels.
+    Reads flow data from arterial output files and exports to CSV.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    vessel_map = {
+        'R_ICA': 'A12',
+        'L_ICA': 'A16',
+        'Basilar': 'A56',
+        'ACoA': 'A77',
+        'R_PCoA': 'A62',
+        'L_PCoA': 'A63',
+    }
+    
+    cerebral_flows = {}
+    
+    for vessel_name, vessel_id in vessel_map.items():
+        flow_file = results_dir / 'arterial' / f'{vessel_id}.txt'
+        
+        if not flow_file.exists():
+            cerebral_flows[vessel_name] = np.nan
+            continue
+        
+        try:
+            data = load_timeseries(flow_file)
+            if data is None or data.shape[0] < 10:
+                cerebral_flows[vessel_name] = np.nan
+                continue
+            
+            time_idx = detect_time_column(data)
+            if time_idx is None:
+                time_idx = 0
+            
+            flow_idx = select_pulsatile_column(data, time_idx)
+            if flow_idx is None:
+                if data.shape[1] >= 2:
+                    flow_idx = 1
+                else:
+                    cerebral_flows[vessel_name] = np.nan
+                    continue
+            
+            time_col = data[:, time_idx]
+            flow_col = data[:, flow_idx]
+            
+            if cycle_period is not None and cycle_period > 0:
+                t_end = time_col[-1]
+                t_start = t_end - cycle_period
+                mask = (time_col >= t_start) & (time_col <= t_end)
+                flow_cycle = flow_col[mask]
+                
+                if len(flow_cycle) > 5:
+                    mean_flow_m3s = np.mean(flow_cycle)
+                else:
+                    mean_flow_m3s = np.mean(flow_col[-100:])
+            else:
+                mean_flow_m3s = np.mean(flow_col[-100:])
+            
+            mean_flow_mlmin = mean_flow_m3s * 60.0 * 1e6
+            cerebral_flows[vessel_name] = mean_flow_mlmin
+            
+        except Exception:
+            cerebral_flows[vessel_name] = np.nan
+    
+    df = pd.DataFrame([cerebral_flows])
+    csv_file = output_dir / 'cerebral_flow_summary.csv'
+    df.to_csv(csv_file, index=False)
+    
+    print("\nCerebral flow summary (mL/min):")
+    for vessel_name, flow in cerebral_flows.items():
+        if np.isnan(flow):
+            print("  {:<12s}: N/A".format(vessel_name))
+        else:
+            print("  {:<12s}: {:>8.2f}".format(vessel_name, flow))
+
+
 def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     """
     Write human-readable summary and metrics CSV.
@@ -476,6 +553,7 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     lines.append("OUTPUT FILES GENERATED")
     lines.append("=" * 80)
     lines.append("  - global_metrics.csv")
+    lines.append("  - cerebral_flow_summary.csv")
     lines.append("  - aortic_pressure_last_cycle.png")
     lines.append("  - aortic_flow_last_cycle.png (if data available)")
     lines.append("  - cycle_overlay_aortic_pressure.png")
@@ -730,6 +808,7 @@ def main():
     
     print("\nWriting outputs...")
     write_summary_and_csv(metrics, output_dir)
+    compute_cerebral_flow_summary(results_dir, output_dir, metrics.cycle_period)
     make_plots(results_dir, output_dir, pressure_file, velocity_file)
     
     print("")

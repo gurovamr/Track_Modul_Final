@@ -1,0 +1,77 @@
+{
+  "model": "patient_011",
+  "timestamp": "2026-02-08 19:42:43.668334",
+  "overall_status": "PASS",
+  "integrity": {
+    "total_files": 100,
+    "passed_files": 100,
+    "failed_files": 0
+  },
+  "convergence": [
+    {
+      "signal_name": "A1",
+      "status": "WARN",
+      "period_seconds": 0.787,
+      "num_cycles": 5,
+      "rms_errors_percent": [
+        0.19197348223850821,
+        0.16696466803495869,
+        0.16683630284092443,
+        0.16679916543060183
+      ],
+      "mean_rms_percent": 0.17314340463624828
+    },
+    {
+      "signal_name": "A10",
+      "status": "PASS",
+      "period_seconds": 0.7920000000000001,
+      "num_cycles": 5,
+      "rms_errors_percent": [
+        0.043365154117202265,
+        0.061837018390800205,
+        0.07276562372382749,
+        0.08418712982939648
+      ],
+      "mean_rms_percent": 0.0655387315153066
+    },
+    {
+      "signal_name": "A100",
+      "status": "WARN",
+      "period_seconds": 0.79,
+      "num_cycles": 5,
+      "rms_errors_percent": [
+        0.12151125789033194,
+        0.12113928292666237,
+        0.08805652277713774,
+        0.1279482403678182
+      ],
+      "mean_rms_percent": 0.11466382599048756
+    },
+    {
+      "signal_name": "A101",
+      "status": "WARN",
+      "period_seconds": 0.79,
+      "num_cycles": 5,
+      "rms_errors_percent": [
+        0.12157592755524672,
+        0.12111389603722034,
+        0.08811475493333054,
+        0.12790439308385088
+      ],
+      "mean_rms_percent": 0.11467724290241212
+    },
+    {
+      "signal_name": "A102",
+      "status": "PASS",
+      "period_seconds": 0.7910000000000001,
+      "num_cycles": 5,
+      "rms_errors_percent": [
+        0.08500782151546916,
+        0.09932616519292593,
+        0.09147835484831486,
+        0.09131943624866495
+      ],
+      "mean_rms_percent": 0.09178294445134373
+    }
+  ]
+}
