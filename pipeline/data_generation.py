@@ -1,27 +1,14 @@
 #!/usr/bin/env python3
 """
-Patient-specific Circle of Willis model generator (v7 - FINAL SOLUTION)
-
-COMPLETE SOLUTION - ALL BUGS FIXED:
-1. Copy ALL files from Abel_ref2 (including arterial.csv with node declarations)
-2. Modify ONLY vessel geometry in arterial.csv (patient-specific CoW)
-3. Generate CORRECT main.csv with proper peripheral mappings (pX->pX, not pX->n1)
-4. Keep all peripheral CSV files unchanged (p1.csv, p2.csv, ..., p47.csv)
-
-This fixes:
-- Zero diastolic pressure (was caused by pX->n1 in main.csv)
-- CoW flow < 1 mL/min (was caused by flow bypassing CoW)
-- 45% mass balance error (was caused by peripheral leakage)
+Patient-specific Circle of Willis model generator
 
 Usage:
-  python3 data_generationV7.py
-  OR
-  python3 data_generationV7.py --pid 025 --force
+  python3 data_generation.py
 
 Output:
   ~/first_blood/models/patient_<pid>/
-    - arterial.csv (patient CoW geometry, all node declarations preserved)
-    - main.csv (CORRECT peripheral mappings: pX->pX)
+    - arterial.csv (patient CoW geometry)
+    - main.csv
     - p1.csv, ..., p47.csv (unchanged from Abel_ref2)
     - heart_kim_lit.csv (unchanged from Abel_ref2)
 """
@@ -32,7 +19,6 @@ import shutil
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
-
 import numpy as np
 import pandas as pd
 
@@ -80,13 +66,14 @@ def find_patient_files(data_root: Path, pid: str) -> Tuple[str, Path, Path, Opti
 
 
 def flatten_nodes(nodes_json: Any):
-    """Extract node coordinates and infer sides."""
+    """Pull out all the node positions and track which ones are on the right vs left."""
     id_to_xyz: Dict[int, np.ndarray] = {}
     node_side_hint: Dict[int, str] = {}
     r_x: List[float] = []
     l_x: List[float] = []
 
     def path_has_side(path) -> Optional[str]:
+        # Walk through the JSON path looking for R- or L- labels
         for p in reversed(path):
             if not isinstance(p, str):
                 continue
@@ -107,10 +94,12 @@ def flatten_nodes(nodes_json: Any):
 
                     sh = path_has_side(path)
                     if sh in ("R", "L"):
+                        # Track side hints, but only if they're consistent
                         if nid in node_side_hint and node_side_hint[nid] != sh:
                             node_side_hint.pop(nid, None)
                         else:
                             node_side_hint[nid] = sh
+                            # Also collect all the x-coordinates for the right/left sides
                             if sh == "R":
                                 r_x.append(float(xyz[0]))
                             else:
@@ -137,12 +126,10 @@ def side_from_endpoints(
     all_r_x: List[float] = None,
     all_l_x: List[float] = None
 ) -> Optional[str]:
-    """Infer vessel side with improved fallback logic.
+    """Figure out if a vessel segment is on the right or left side.
     
-    Priority:
-    1. Use explicit side hints from node path (R-xxx or L-xxx)
-    2. Use X-coordinate relative to midline (mean of all R/L nodes)
-    3. Return None only if no coordinates available
+    First the start/end nodes that have any explicit R/L labels are checked.
+    If not,  their x-coordinates are compared to the midline between all known right and left nodes.
     """
     hints = []
     if start_id in node_side_hint:
@@ -153,11 +140,11 @@ def side_from_endpoints(
     if hints:
         if all(h == hints[0] for h in hints):
             return hints[0]
-        # If hints conflict, use majority or first
+       
         if len(hints) >= 2:
-            return hints[0]  # Return first hint instead of None
+            return hints[0]
 
-    # Fallback: use X-coordinate relative to midline
+    # Get the x-coordinates of the start and end nodes if available
     xs = []
     if start_id in id_to_xyz:
         xs.append(float(id_to_xyz[start_id][0]))
@@ -169,19 +156,19 @@ def side_from_endpoints(
     
     x_mean = float(np.mean(xs))
     
-    # Use midline between R and L centroids if available
+    # If x-coords for all right and left nodes exist, use the midline between them
     if all_r_x and all_l_x:
         midline = (np.mean(all_r_x) + np.mean(all_l_x)) / 2.0
         return "R" if x_mean > midline else "L"
     
-    # Original logic
+    # Fallback: just check the sign relative to the origin
     if right_is_positive_x:
         return "R" if x_mean >= 0.0 else "L"
     return "R" if x_mean <= 0.0 else "L"
 
 
 def parse_patient_features(features_json: Any) -> List[Dict[str, Any]]:
-    """Extract vessel segments."""
+    """Go through the JSON and pull out all the vessel segment data."""
     segs: List[Dict[str, Any]] = []
 
     def on_dict(d, path):
@@ -202,6 +189,7 @@ def parse_patient_features(features_json: Any) -> List[Dict[str, Any]]:
         except Exception:
             return
 
+        # vessel name from the JSON path 
         raw_name = None
         for p in reversed(path):
             if not str(p).isdigit():
@@ -210,6 +198,7 @@ def parse_patient_features(features_json: Any) -> List[Dict[str, Any]]:
         if raw_name is None:
             raw_name = "UNKNOWN"
 
+        # Skip bifurcations and keep the actual vessels
         if "bifurcation" in raw_name.lower():
             return
 
@@ -228,12 +217,7 @@ def parse_patient_features(features_json: Any) -> List[Dict[str, Any]]:
 CANONICAL = {"A1", "A2", "Acom", "Pcom", "MCA", "BA", "P1", "P2", "ICA", "C6", "C7"}
 
 def normalize_segment_name(raw_name: str) -> str:
-    """Normalize vessel names to CANONICAL set.
-    
-    C6/C7 are ICA segments (cavernous/ophthalmic) - map to ICA.
-    PCA is P1+P2 combined - skip (use individual P1/P2 instead).
-    ACA is A1+A2 combined - skip (use individual A1/A2 instead).
-    """
+    """Mapping from input data to match standard vessel names."""
     name = str(raw_name).strip()
     if name in CANONICAL:
         return name
@@ -244,12 +228,12 @@ def normalize_segment_name(raw_name: str) -> str:
         return "Pcom"
     if low == "ba":
         return "BA"
-    # C6/C7 are ICA segments - treat as ICA
+    # C6 and C7 are  different sections of the internal carotid artery
     if low in ("c6", "c7"):
         return "ICA"
-    # PCA and ACA are combined vessels - skip them, use P1/P2 and A1/A2 instead
+    #  PCA and ACA are grouped together with A2 and P2
     if low in ("pca", "aca"):
-        return None  # Will be skipped
+        return None
     return name
 
 
@@ -276,23 +260,17 @@ def build_firstblood_mapping() -> Dict[Tuple[Optional[str], str], List[str]]:
 
 def get_absent_vessels(variants: Optional[Dict]) -> List[Tuple[Optional[str], str]]:
     """
-    Parse variant file and return list of absent vessel keys.
+    Extract which vessels are missing/abnormal from the variant file.
     
-    Variant file format:
-    {
-        "anterior": {"L-A1": true, "Acom": true, "R-A1": true, ...},
-        "posterior": {"L-Pcom": false, "L-P1": true, "R-P1": true, "R-Pcom": true},
-        ...
-    }
-    
-    false = vessel is ABSENT
+    The variant JSON has sections for anterior/posterior/fetal circulation,
+    and each vessel is marked true (present) or false (absent).
     """
     if not variants:
         return []
     
     absent = []
     
-    # Map variant keys to our (side, canon) format
+    # Convert the variant keys to the format we use internally
     variant_to_key = {
         "L-A1": ("L", "A1"), "R-A1": ("R", "A1"),
         "L-A2": ("L", "A2"), "R-A2": ("R", "A2"),
@@ -315,11 +293,8 @@ def get_absent_vessels(variants: Optional[Dict]) -> List[Tuple[Optional[str], st
 
 def mark_vessel_absent(df: pd.DataFrame, fb_id: str) -> Optional[Dict[str, Any]]:
     """
-    Mark a vessel as effectively absent by setting near-zero diameter.
-    
-    For anatomical variants where a vessel is missing (e.g., L-Pcom),
-    we set diameter to 0.1mm which creates very high resistance,
-    effectively blocking flow through that pathway.
+    Mark anatomically absent vessels by assigning minimal diameter (0.1 mm) to effectively 
+    block hemodynamic flow through non-existent structures.
     """
     idxs = df.index[df["ID"] == fb_id].tolist()
     if not idxs:
@@ -329,9 +304,9 @@ def mark_vessel_absent(df: pd.DataFrame, fb_id: str) -> Optional[Dict[str, Any]]
     name = str(df.loc[i, "name"])
     old_diam = float(df.loc[i, "start_diameter[SI]"])
     
-    # Set to 0.1mm diameter (effectively occluded)
-    absent_diameter = 0.0001  # 0.1mm in meters
-    absent_thickness = 0.00001  # 0.01mm
+    # Minimal diameter assignment to prevent flow in absent vessel
+    absent_diameter = 0.0001
+    absent_thickness = 0.00001
     
     df.loc[i, "start_diameter[SI]"] = absent_diameter
     df.loc[i, "end_diameter[SI]"] = absent_diameter
@@ -349,10 +324,9 @@ def mark_vessel_absent(df: pd.DataFrame, fb_id: str) -> Optional[Dict[str, Any]]
 
 
 def apply_geometry(df: pd.DataFrame, fb_id: str, length_m: float, diameter_m: float) -> Optional[Dict[str, Any]]:
-    """Apply patient geometry to vessel.
+    """Update a vessel's length, diameter, and wall thickness with patient data.
     
-    Updates: length, diameter, AND wall thickness (10% of diameter).
-    Abel_ref2 uses consistent 10% thickness ratio for all vessels.
+    The wall thickness is always 10% of the diameter (ratio is taken from Abel_ref2 ).
     """
     idxs = df.index[df["ID"] == fb_id].tolist()
     if not idxs:
@@ -363,13 +337,13 @@ def apply_geometry(df: pd.DataFrame, fb_id: str, length_m: float, diameter_m: fl
     old_d1 = float(df.loc[i, "start_diameter[SI]"])
     name = str(df.loc[i, "name"])
 
-    # Calculate wall thickness as 10% of diameter (Abel_ref2 standard)
+    # Wall thickness should be 10% of diameter
     thickness_m = 0.1 * diameter_m
 
     df.loc[i, "length[SI]"] = float(length_m)
     df.loc[i, "start_diameter[SI]"] = float(diameter_m)
     df.loc[i, "end_diameter[SI]"] = float(diameter_m)
-    # FIX: Update wall thickness to maintain 10% ratio
+    # the wall thickness is updated so it scales with the new diameter
     df.loc[i, "start_thickness[SI]"] = float(thickness_m)
     df.loc[i, "end_thickness[SI]"] = float(thickness_m)
 
@@ -385,24 +359,28 @@ def apply_geometry(df: pd.DataFrame, fb_id: str, length_m: float, diameter_m: fl
 
 
 def split_length_by_template(df: pd.DataFrame, ids: List[str], total_length_m: float) -> List[float]:
+    # Total length is split proportionally based on how long each segment is in the template
     template_lengths = []
     for fb_id in ids:
         idxs = df.index[df["ID"] == fb_id].tolist()
         template_lengths.append(float(df.loc[idxs[0], "length[SI]"]) if idxs else 0.0)
     s = float(np.sum(template_lengths))
+    # If the template has no length data, it is  split equally
     if s <= 1e-12:
         return [total_length_m / len(ids) for _ in ids]
+    # Otherwise scale each segment by its proportion of the total
     return [total_length_m * (tl / s) for tl in template_lengths]
 
 
 def find_terminal_nodes(arterial_df: pd.DataFrame) -> List[str]:
     """
-    Find peripheral terminal nodes (p1, p2, ..., p47).
-    Uses regex to exclude nodes like "parameter".
+    Find all the peripheral terminal nodes (p1, p2, etc.) where vessels end in the model.
     """
+    # Find nodes that are end points but never start points
     starts = set(arterial_df['start_node'].dropna())
     ends = set(arterial_df['end_node'].dropna())
     terminals = ends - starts
+    # Filter to just the p1, p2, ... nodes 
     peripheral_pattern = re.compile(r'^p\d+$')
     peripherals = sorted([n for n in terminals if peripheral_pattern.match(str(n))])
     return peripherals
@@ -410,14 +388,10 @@ def find_terminal_nodes(arterial_df: pd.DataFrame) -> List[str]:
 
 def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time_duration: float = 10.317):
     """
-    Generate CORRECT main.csv with proper peripheral mappings.
+    Generate main.csv with the right connections between peripherals and arterial nodes.
     
-    CRITICAL FIX: Each peripheral pX connects to the arterial node that feeds it!
-    For example: if vessel goes n8->p4, then main.csv should have: lumped,p4,N4p,n8
-    
-    This fixes:
-    - "Node is not existing, node_id: p1" error
-    - Segmentation fault during initialization
+    Each peripheral pX needs to connect to the exact node that feeds it in the arterial network.
+    The key is mapping which node feeds each peripheral terminal.
     """
     peripherals = find_terminal_nodes(arterial_df)
     
@@ -426,7 +400,7 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
     
     print(f"  Found {len(peripherals)} peripheral terminal nodes")
     
-    # Map each peripheral to its feeding arterial node
+    # Build a map of which arterial node feeds into each peripheral
     peripheral_to_node = {}
     for _, row in arterial_df.iterrows():
         if row['type'] != 'vis_f':
@@ -446,10 +420,10 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
         "type,name,main node,model node,main node,model node,...",
     ]
     
-    # MOC arterial connections
+    # MOC arterial connections (pairing each peripheral to its model node)
     moc_connections = []
     for p in sorted(peripherals):
-        num = p[1:]  # Extract number: 'p47' -> '47'
+        num = p[1:]  
         main_node = f"N{num}p"
         moc_connections.extend([main_node, p])
     moc_connections.extend(["Heart", "H"])
@@ -457,18 +431,16 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
     lines.append("moc,arterial," + ",".join(moc_connections))
     lines.append("")
     
-    # CRITICAL FIX: Lumped peripherals connect to their FEEDING arterial nodes
-    # Example: if vessel goes n8->p4, then: lumped,p4,N4p,n8
+    # Connection of each peripheral lumped network to the arterial node 
     for p in sorted(peripherals):
         num = p[1:]
         main_node = f"N{num}p"
-        feeding_node = peripheral_to_node.get(p, 'n1')  # Fallback to n1 if not found
+        feeding_node = peripheral_to_node.get(p, 'n1')
         lines.append(f"lumped,{p},{main_node},{feeding_node}")
     
     lines.append("lumped,heart_kim_lit,Heart,aorta")
     lines.append("")
     
-    # Node declarations
     for p in sorted(peripherals):
         num = p[1:]
         lines.append(f"node,N{num}p")
@@ -478,23 +450,21 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
     with open(output_path, 'w') as f:
         f.write('\n'.join(lines))
     
-    print(f"  Generated CORRECT main.csv:")
-    print(f"    {len(peripherals)} peripherals with CORRECT feeding node mappings")
-    print(f"    This fixes: 'Node is not existing' error and segfault")
+    print(f"  Generated main.csv:")
+    print(f"    {len(peripherals)} peripherals with correct feeding connections")
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Patient-specific CoW model generator (v7 - FINAL SOLUTION)",
+        description="Generate a patient-specific Circle of Willis model by modifying template geometry",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-This version keeps the Abel_ref2 solver structure:
-  1. Copies complete Abel_ref2 (including main.csv)
-  2. Modifies only CoW vessel geometry
-  3. Leaves p*.csv and main.csv unchanged for solver stability
+        epilog="""How it works:
+  1. Start with the Abel_ref2 template 
+  2. SwAsjust the CoW vessel lengths and diameters with patient data
+  3. Keep peripherals & main.csv
 
 Example:
-  python3 data_generationV7.py --pid 025 --force
+  python3 data_generation.py
         """
     )
     ap.add_argument("--pid", default=None, help="Patient ID (e.g., 025)")
@@ -521,19 +491,11 @@ Example:
 
     modality, feature_path, nodes_path, variant_path = find_patient_files(data_root, pid)
 
-    print("=" * 78)
-    print("PATIENT-SPECIFIC CoW MODEL GENERATOR (v7 - FINAL SOLUTION)")
-    print("=" * 78)
-    print(f"Patient ID:     {pid}")
-    print(f"Modality:       {modality}")
-    print(f"Template:       {args.template}")
-    print(f"Output:         {out_model_name}")
-    print("-" * 78)
 
     features = load_json(feature_path)
     nodes = load_json(nodes_path)
     
-    # Load anatomical variants (absent vessels)
+    # Load anatomical variants
     variants = None
     absent_vessels = []
     if variant_path and variant_path.exists():
@@ -545,29 +507,36 @@ Example:
                 side, canon = av
                 print(f"  - {side or ''}-{canon}: ABSENT")
 
+    # Extract all the node positions and figure out the left/right orientation
     id_to_xyz, node_side_hint, r_x, l_x = flatten_nodes(nodes)
     right_is_pos_x = infer_right_is_positive_x(r_x, l_x)
 
+    # vessel segments from the patient data
     segs = parse_patient_features(features)
     print(f"Parsed {len(segs)} vessel segments")
 
+    # Mappin vessels to FirstBlood IDs
     fb_map = build_firstblood_mapping()
     candidates: List[Dict[str, Any]] = []
 
+    # Filtering for required segments
     for s in segs:
         canon = normalize_segment_name(s["raw_name"])
         if canon is None or canon not in CANONICAL:
             continue
 
+        # Determine which side the vessel is on
         side = side_from_endpoints(id_to_xyz, node_side_hint, s["start_id"], s["end_id"], right_is_pos_x, r_x, l_x)
+        # Convert measurements from mm to meters
         length_m = float(s["length_mm"]) / 1000.0
         diameter_m = (2.0 * float(s["radius_mm"])) / 1000.0
 
+        # Acom and BA don't have a side because they are midline structures
         if canon in {"BA", "Acom"}:
             key = (None, canon)
         else:
             if side is None:
-                print(f"  ⚠️  Skipping {canon}: could not infer side (nodes {s['start_id']}->{s['end_id']})")
+                print(f"   Skipping {canon}: could not infer side (nodes {s['start_id']}->{s['end_id']})")
                 continue
             key = (side, canon)
 
@@ -579,6 +548,7 @@ Example:
             "diameter_m": diameter_m,
         })
 
+    # the best measurement for each vessel is kept
     patient_geom: Dict[Tuple[Optional[str], str], Dict[str, Any]] = {}
     for c in candidates:
         key = c["key"]
@@ -588,6 +558,7 @@ Example:
     print(f"Kept {len(patient_geom)} unique CoW measurements")
     print("-" * 78)
 
+    # Create output directory
     if out_dir.exists():
         if not args.force:
             raise FileExistsError(f"Output exists: {out_dir}\nUse --force")
@@ -598,7 +569,7 @@ Example:
     if not template_arterial.exists():
         raise FileNotFoundError(f"Missing arterial.csv in template")
 
-    # STEP 1: Copy ALL template files (including main.csv)
+    # Copy all the template files 
     print("\nStep 1: Copying template files...")
     copied = 0
     for src in template_dir.glob("*.csv"):
@@ -606,19 +577,20 @@ Example:
         copied += 1
     print(f"  Copied {copied} CSV files")
 
-    # STEP 2: Load and modify arterial.csv
-    print("\nStep 2: Injecting patient-specific CoW geometry...")
+    # Load the arterial.csv file and insert patient data
+    print("\nStep 2:  patient-specific CoW geometry...")
     arterial_path = out_dir / "arterial.csv"
     df = pd.read_csv(arterial_path)
 
     modifications: List[Dict[str, Any]] = []
 
-    # Inject BA
+    # Update the basilar artery first
     ba_key = (None, "BA")
     if ba_key in patient_geom:
         fb_ids = fb_map[ba_key]
         total_len = float(patient_geom[ba_key]["length_m"])
         diam = float(patient_geom[ba_key]["diameter_m"])
+        # Split the total BA length across the segments proportionally
         split_lens = split_length_by_template(df, fb_ids, total_len)
 
         for fb_id, L in zip(fb_ids, split_lens):
@@ -627,7 +599,7 @@ Example:
                 mod.update({"Patient_key": "BA"})
                 modifications.append(mod)
 
-    # Inject other CoW vessels
+    # Update the other major vessels
     for (side, canon), g in patient_geom.items():
         if canon == "BA":
             continue
@@ -643,7 +615,7 @@ Example:
                 mod.update({"Patient_key": pk})
                 modifications.append(mod)
 
-    # STEP 2b: Handle anatomical variants (absent vessels)
+    # Handle any anatomical variants
     if absent_vessels:
         print(f"\nStep 2b: Marking {len(absent_vessels)} absent vessels...")
         for av_key in absent_vessels:
@@ -661,20 +633,15 @@ Example:
     df.to_csv(arterial_path, index=False)
     print(f"  Modified {len(modifications)} CoW vessels total")
 
-    # STEP 3: Keep template main.csv for solver stability
+    # Keep the template main.csv as-is (we don't need to regenerate it)
     print("\nStep 3: Keeping template main.csv...")
 
     # Save log
     pd.DataFrame(modifications).to_csv(out_dir / "modifications_log.csv", index=False)
 
-    print("\n" + "=" * 78)
-    print("SUCCESS - MODEL GENERATED")
+
     print("=" * 78)
     print(f"Output: {out_dir}")
-    print(f"\nWhat was done:")
-    print(f"  1. Preserved Abel_ref2 solver structure (main.csv, p*.csv)")
-    print(f"  2. Injected patient-specific CoW geometry")
-    print(f"  3. Applied CoW variants where present")
     print(f"\nRun simulation:")
     print(f"  cd {repo_root}/projects/simple_run")
     print(f"  ./simple_run.out {out_model_name}")

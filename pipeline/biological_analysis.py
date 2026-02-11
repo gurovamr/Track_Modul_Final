@@ -39,8 +39,7 @@ class HemodynamicMetrics:
 
 def list_models(results_base_path: Path) -> List[str]:
     """
-    List available model directories in results folder.
-    Returns sorted list of model names.
+    Finds all model directories in the results folder and returns them sorted.
     """
     if not results_base_path.exists():
         return []
@@ -52,8 +51,7 @@ def list_models(results_base_path: Path) -> List[str]:
 
 def select_model_interactive(results_base_path: Path) -> Optional[str]:
     """
-    List available models and prompt user to select.
-    Returns selected model name or None if cancelled.
+    Shows available models and lets the user pick one. Returns the chosen model name or None.
     """
     models = list_models(results_base_path)
     
@@ -81,8 +79,7 @@ def select_model_interactive(results_base_path: Path) -> Optional[str]:
 
 def discover_txt_files(results_dir: Path) -> List[Path]:
     """
-    Recursively find all .txt files in results directory.
-    Returns sorted list of file paths.
+    Finds all .txt files recursively and returns them sorted.
     """
     txt_files = []
     
@@ -94,9 +91,7 @@ def discover_txt_files(results_dir: Path) -> List[Path]:
 
 def load_timeseries(filepath: Path) -> Optional[np.ndarray]:
     """
-    Load timeseries from text file.
-    Tries comma delimiter first, then whitespace.
-    Returns None on failure.
+    Loads timeseries data from a text file. Tries comma-separated values first, then falls back to whitespace.
     """
     try:
         data = np.genfromtxt(filepath, delimiter=',', max_rows=None)
@@ -125,8 +120,7 @@ def load_timeseries(filepath: Path) -> Optional[np.ndarray]:
 
 def detect_time_column(data: np.ndarray) -> Optional[int]:
     """
-    Detect which column contains strictly increasing time values.
-    Returns column index or None if not found.
+    Finds which column has strictly increasing time values. Returns the column index or None if not found.
     """
     if data.ndim != 2 or data.shape[0] < 10:
         return None
@@ -147,9 +141,7 @@ def detect_time_column(data: np.ndarray) -> Optional[int]:
 
 def select_pulsatile_column(data: np.ndarray, time_col_idx: int) -> Optional[int]:
     """
-    Select the most pulsatile column (largest peak-to-peak amplitude).
-    Excludes time column and nearly constant signals.
-    Returns column index or None if not found.
+    Picks the column with the biggest oscillations (largest peak-to-peak). Skips the time column and flat signals.
     """
     if data.ndim != 2 or data.shape[0] < 10:
         return None
@@ -181,9 +173,7 @@ def select_pulsatile_column(data: np.ndarray, time_col_idx: int) -> Optional[int
 
 def choose_aortic_signals(results_dir: Path) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """
-    Find aortic pressure and velocity/diameter files.
-    First checks heart_kim_lit/aorta.txt, then falls back to name-based heuristics.
-    Returns (pressure_file, velocity_file, diameter_file) or (None, None, None).
+    Looks for aortic pressure files. Checks the standard location first, then searches by filename patterns.
     """
     primary_aorta = results_dir / 'heart_kim_lit' / 'aorta.txt'
     
@@ -209,7 +199,7 @@ def choose_aortic_signals(results_dir: Path) -> Tuple[Optional[Path], Optional[P
 def resample_uniform(time_col: np.ndarray, signal_col: np.ndarray, 
                      n_points: int = 1000) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Resample signal to uniform time grid using linear interpolation.
+    Resamples the signal onto a uniform time grid via linear interpolation.
     """
     t_uniform = np.linspace(time_col[0], time_col[-1], n_points)
     s_uniform = np.interp(t_uniform, time_col, signal_col)
@@ -219,8 +209,7 @@ def resample_uniform(time_col: np.ndarray, signal_col: np.ndarray,
 
 def numpy_find_peaks(signal: np.ndarray, distance: int = 5, height: float = 0.0) -> np.ndarray:
     """
-    Find peaks in signal using numpy only.
-    Returns array of peak indices.
+    Finds peaks (local maxima) in the signal using only numpy. Returns the indices of the peaks.
     """
     peaks = []
     n = len(signal)
@@ -239,9 +228,7 @@ def estimate_period_autocorr(signal_data: np.ndarray,
                              min_period: float = 0.4,
                              max_period: float = 1.5) -> Optional[float]:
     """
-    Estimate cardiac period using autocorrelation.
-    Searches within [min_period, max_period] range.
-    Returns period in seconds or None if not found.
+    Estimates the cardiac period by looking for repeating patterns in the signal using autocorrelation.
     """
     if len(signal_data) < 50:
         return None
@@ -285,8 +272,7 @@ def estimate_period_autocorr(signal_data: np.ndarray,
 def extract_last_cycle(signal_data: np.ndarray, 
                        time_data: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     """
-    Extract last complete cycle from signal using peak detection.
-    Returns (cycle_signal, cycle_time) or (None, None).
+    Pulls out the last complete cardiac cycle from the signal by finding peaks.
     """
     if signal_data is None or len(signal_data) < 20:
         return None, None
@@ -312,8 +298,7 @@ def extract_two_cycles(signal_data: np.ndarray,
                        time_data: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray],
                                                         Optional[np.ndarray], Optional[np.ndarray]]:
     """
-    Extract last two complete cycles from signal.
-    Returns (cycle1_signal, cycle1_time, cycle2_signal, cycle2_time) or all None.
+    Extracts the last two complete cardiac cycles from the signal.
     """
     if signal_data is None or len(signal_data) < 20:
         return None, None, None, None
@@ -341,9 +326,7 @@ def extract_two_cycles(signal_data: np.ndarray,
 
 def compute_pressure_metrics(signal_data: np.ndarray) -> Dict[str, float]:
     """
-    Compute systolic, diastolic, and mean pressure from cycle.
-    Returns dict with P_sys, P_dia, P_map.
-    Assumes signal is already in mmHg (gauge).
+    Calculates systolic, diastolic, and mean pressure from a cycle (assuming the signal is already in mmHg).
     """
     if signal_data is None or len(signal_data) < 2:
         return {}
@@ -359,10 +342,7 @@ def compute_flow_metrics(velocities: np.ndarray,
                         diameters: np.ndarray,
                         time_col: np.ndarray) -> Dict[str, float]:
     """
-    Compute flow metrics from velocity and diameter.
-    Q = v * A where A = pi*(D/2)^2
-    Assumes velocities in m/s, diameters in m.
-    Returns dict with SV_ml and CO_lmin.
+    Calculates stroke volume and cardiac output from velocity and diameter using Q = v * A.
     """
     if velocities is None or diameters is None or time_col is None:
         return {}
@@ -385,8 +365,7 @@ def compute_flow_metrics(velocities: np.ndarray,
 
 def compute_convergence_rms(cycle1: np.ndarray, cycle2: np.ndarray) -> float:
     """
-    Compute RMS percent difference between two cycles.
-    Formula: RMS% = RMS(cycle1 - cycle2) / range(cycle2) * 100
+    Calculates how different two cycles are as a percentage using RMS.
     """
     if cycle1 is None or cycle2 is None or len(cycle1) < 2 or len(cycle2) < 2:
         return None
@@ -413,8 +392,7 @@ def compute_convergence_rms(cycle1: np.ndarray, cycle2: np.ndarray) -> float:
 
 def compute_cerebral_flow_summary(results_dir: Path, output_dir: Path, cycle_period: Optional[float]):
     """
-    Compute mean cerebral flow over last cardiac cycle for key CoW vessels.
-    Reads flow data from arterial output files and exports to CSV.
+    Calculates mean flow rates for key cerebral vessels over the last cardiac cycle and saves to CSV.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -490,7 +468,7 @@ def compute_cerebral_flow_summary(results_dir: Path, output_dir: Path, cycle_per
 
 def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     """
-    Write human-readable summary and metrics CSV.
+    Generates a readable summary report and exports the metrics to CSV.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -585,7 +563,7 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
 def make_plots(results_dir: Path, output_dir: Path, 
                pressure_file: Path, velocity_file: Optional[Path] = None):
     """
-    Generate diagnostic plots.
+    Creates visualization plots showing pressure cycles and convergence.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -651,7 +629,7 @@ def make_plots(results_dir: Path, output_dir: Path,
 
 def main():
     """
-    Main entry point with interactive and CLI modes.
+    Main entry point that handles both interactive mode and command-line arguments.
     """
     parser = argparse.ArgumentParser(
         description='Biological validation of FirstBlood simulation'
