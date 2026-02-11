@@ -70,11 +70,11 @@ def select_model_interactive(results_base_path: Path) -> Optional[str]:
             idx = int(selection) - 1
             if 0 <= idx < len(models):
                 return models[idx]
-            print("Invalid number. Try again.")
+            print("Invalid number. ")
         elif selection in models:
             return selection
         else:
-            print("Model not found. Try again.")
+            print("Model not found.")
 
 
 def discover_txt_files(results_dir: Path) -> List[Path]:
@@ -657,7 +657,7 @@ def main():
         results_dir = results_base / model_name
     
     if not results_dir.exists():
-        print("Error: Results directory not found: {}".format(results_dir))
+        print(": Results directory not found: {}".format(results_dir))
         sys.exit(1)
     
     model_name = results_dir.name
