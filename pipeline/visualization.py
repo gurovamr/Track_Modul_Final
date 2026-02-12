@@ -755,7 +755,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
         else:
             return 'red', 1.6
     
-    # Maps vessel IDs to their anatomical names for labeling
+    # Vessel IDs are mapped to anatomical names for labeling.
     vessel_names = {
         'A1': 'Aorta', 'A2': 'L-Carotid', 'A3': 'R-Carotid', 'A4': 'R-Subclavian',
         'A5': 'R-CCA', 'A6': 'Vertebral', 'A12': 'R-ICA', 'A13': 'R-ECA', 
@@ -777,12 +777,12 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
         ax.plot(xs, ys, color=color, linewidth=lw, solid_capstyle='round',
                 zorder=2, alpha=0.85)
         
-        # Labels come from the provided argument or from the vessel mapping dictionary
+        # The provided label is used when available; otherwise the name map is used.
         if label is None and vid in vessel_names:
             label = vessel_names[vid]
         
         if label:
-            # Label is positioned along the vessel at the specified fractional position
+            # The label is placed along the vessel at the requested fractional position.
             idx = max(0, min(int(len(xs) * label_pos), len(xs) - 1))
             x_label, y_label = xs[idx], ys[idx]
             ax.text(x_label, y_label, label, fontsize=5.5, fontweight='bold',
@@ -809,7 +809,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
     fig.suptitle(f'Arterial Network: {model_name}',
                  fontsize=14, fontweight='bold', y=0.99)
     
-    # Vertical region labels positioned on the left side of the diagram
+    # Vertical region labels are placed along the left side of the diagram.
     ax.text(-8.2, 37.0, 'BRAIN', fontsize=11, fontweight='bold', 
            color='#333333', rotation=90, va='center',
            bbox=dict(boxstyle='round,pad=0.5', fc='#ffffcc', ec='#999999', linewidth=1.5, alpha=0.9))
@@ -820,7 +820,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
            color='#333333', rotation=90, va='center',
            bbox=dict(boxstyle='round,pad=0.5', fc='#ccccff', ec='#999999', linewidth=1.5, alpha=0.9))
     
-    # Brain vasculature: carotid and vertebral arteries, Circle of Willis (y ≈ 26-38)
+    # Brain vasculature is laid out here: carotids, vertebrals, and the Circle of Willis (y ≈ 26-38).
     r_cca_top = (1.2, 27.0)
     l_cca_top = (-1.2, 27.0)
     r_ica = (1.0, 28.5)
@@ -967,7 +967,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
     draw_vessel(ax, [(-0.75, 30.0), (-1.3, 30.8)], 'A102')
     term(ax, -1.3, 30.8)
     
-    # Alert if posterior cerebral artery shows reversed flow (fetal circulation pattern)
+    # Reversed PCA flow is flagged here (fetal pattern).
     if r_pca_flow < 0:
         ax.annotate('FLOW REVERSAL\n(Fetal variant)',
                     xy=(0.5, 29.8), xytext=(3.0, 29.0),
@@ -976,8 +976,8 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
                     arrowprops=dict(arrowstyle='->', color='blue', lw=1.5),
                     zorder=6)
     
-    # Thoracic and abdominal aorta with its major branches (y ≈ 13-26)
-    # Cardiac inlet represents the boundary condition where blood enters from the left ventricle
+    # Thoracic and abdominal aorta branches are laid out here (y ≈ 13-26).
+    # The cardiac inlet marks the boundary where blood enters from the left ventricle.
     heart_inlet = (0, 24.0)
     ax.plot(*heart_inlet, marker='D', markerfacecolor='red', markeredgecolor='darkred',
             markersize=10, markeredgewidth=1.5, zorder=10)
@@ -986,7 +986,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
             bbox=dict(boxstyle='round,pad=0.3', fc='mistyrose', 
                      ec='darkred', lw=1, alpha=0.9))
     
-    # The ascending aorta (vessel A1) originates from the heart
+    # The ascending aorta (A1) starts at the heart.
     ax.text(-1.3, 24.8, 'Asc. Aorta', fontsize=7, fontweight='bold',
             style='italic', color='darkred',
             bbox=dict(boxstyle='round,pad=0.25', fc='white', 
@@ -1121,7 +1121,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
     draw_vessel(ax, [n25, n13], 'A41')
     junc(ax, *n13)
     
-    # Lower extremity arteries: iliac, femoral, and tibial branches (y ≈ 0-14)
+    # Lower extremity arteries are laid out here: iliac, femoral, and tibial branches (y ≈ 0-14).
     n17 = (1.5, 13.0)
     draw_vessel(ax, [n13, n17], 'A42', label='R-Iliac')
     junc(ax, *n17)
@@ -1164,7 +1164,7 @@ def make_paper_style_arterial_tree(results_dir: Path, output_dir: Path, model_na
     draw_vessel(ax, [n16, (-2.8, 6.0)], 'A55')
     term(ax, -2.8, 6.0)
     
-    # Add anatomical labels using dedicated helper function
+    # Anatomical labels are added using the helper function.
     add_anatomical_labels_to_tree(ax)
     
     from matplotlib.lines import Line2D
@@ -1195,7 +1195,7 @@ def make_network_schematic(model_dir: Path, output_dir: Path):
     Creates an optional network topology diagram with automatic layout.
     Reads connection information from arterial.csv to show vessel relationships.
     """
-    # This function is not currently used in the main visualization pipeline
+    # This function is not used in the main visualization pipeline yet.
     arterial_csv = model_dir / 'arterial.csv'
     
     if not arterial_csv.exists():
@@ -1438,16 +1438,58 @@ def make_multisite_waveform_panels(results_dir: Path, model_dir: Path, output_di
     print("  [8] fig7_multisite_waveforms.png")
 
 
-# ============================================================================
-# NEW PRIORITY 1-7 VISUALIZATION FUNCTIONS FOR CIRCLE OF WILLIS ANALYSIS
-# ============================================================================
+# Circle of Willis visualization functions (priority 1-7) start here.
 
-def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Path):
+def load_cow_flow_dict(cerebral_flow_file: Path) -> Dict[str, float]:
+    """
+    Loads mean flow values (mL/min) from biological_analysis output.
+    """
+    flow_data: Dict[str, float] = {}
+    try:
+        with open(cerebral_flow_file, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        if not rows:
+            return flow_data
+        row = rows[0]
+        if 'Vessel' in row and 'Mean_Flow_mL_min' in row:
+            for r in rows:
+                vessel = r.get('Vessel', '').strip()
+                flow = r.get('Mean_Flow_mL_min', None)
+                if vessel and flow:
+                    try:
+                        flow_data[vessel] = float(flow)
+                    except ValueError:
+                        pass
+        else:
+            for key in ['L_ICA', 'R_ICA', 'Basilar', 'ACoA', 'L_PCoA', 'R_PCoA']:
+                if key in row and row[key] not in (None, ''):
+                    try:
+                        flow_data[key] = float(row[key])
+                    except ValueError:
+                        pass
+    except Exception:
+        return {}
+    return flow_data
+
+
+def format_cow_flow_label(value: Optional[float]) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return 'N/A'
+    if abs(value) < 1.0:
+        return '{:.3f} mL/min'.format(value)
+    return '{:.1f} mL/min'.format(value)
+
+
+def make_cow_topology_diagram(results_dir: Path,
+                              model_dir: Path,
+                              output_dir: Path,
+                              flow_data: Optional[Dict[str, float]] = None):
     """
     Creates Circle of Willis topology diagram with patient-specific anatomy.
     Shows vessel diameters and flow values with anatomically accurate layout.
     """
-    # Try to load vessel geometry data
+    # Vessel geometry data is loaded when available.
     modifications_log = model_dir / 'modifications_log.csv'
     cerebral_flow_file = output_dir.parent / 'biological_analysis' / 'cerebral_flow_summary.csv'
     
@@ -1455,7 +1497,7 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
         print("Warning: modifications_log.csv or cerebral_flow_summary.csv not found, skipping CoW topology")
         return
     
-    # Load vessel dimensions
+    # Vessel dimensions are loaded from the modifications log.
     vessel_diameters = {}
     try:
         with open(modifications_log, 'r') as f:
@@ -1472,24 +1514,16 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
         print("Warning: Could not parse modifications_log.csv, skipping CoW topology")
         return
     
-    # Load flow data
-    flow_data = {}
-    try:
-        with open(cerebral_flow_file, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                vessel = row.get('Vessel', '').strip()
-                flow = row.get('Mean_Flow_mL_min', None)
-                if vessel and flow:
-                    try:
-                        flow_data[vessel] = float(flow)
-                    except ValueError:
-                        pass
-    except Exception:
+    # Flow data is loaded from the biological analysis output.
+    if flow_data is None:
+        flow_data = load_cow_flow_dict(cerebral_flow_file)
+    if not flow_data:
         print("Warning: Could not parse cerebral_flow_summary.csv, skipping CoW topology")
         return
+
+    print("[COW] Flow dict: {}".format(flow_data))
     
-    # Define vessel positions (anatomical layout)
+    # Vessel positions are defined using an anatomical layout.
     vessel_positions = {
         'Basilar': (0, 0),
         'R-P1': (1.5, 1), 'L-P1': (-1.5, 1),
@@ -1501,7 +1535,7 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
         'R-PCA': (2, 2.5), 'L-PCA': (-2, 2.5),
     }
     
-    # Define vessel connections
+    # Vessel connections are defined for the topology graph.
     connections = [
         ('Basilar', 'R-P1'), ('Basilar', 'L-P1'),
         ('R-P1', 'R-PCoA'), ('L-P1', 'L-PCoA'),
@@ -1517,17 +1551,29 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
     ax.set_aspect('equal')
     ax.axis('off')
     
-    # Draw vessels with flow-dependent coloring
+    flow_key_map = {
+        'L-ICA': 'L_ICA',
+        'R-ICA': 'R_ICA',
+        'Basilar': 'Basilar',
+        'ACoA': 'ACoA',
+        'L-PCoA': 'L_PCoA',
+        'R-PCoA': 'R_PCoA',
+    }
+
+    # Vessels are drawn with flow-dependent coloring.
     for vessel_a, vessel_b in connections:
         if vessel_a in vessel_positions and vessel_b in vessel_positions:
             x1, y1 = vessel_positions[vessel_a]
             x2, y2 = vessel_positions[vessel_b]
             
-            flow = flow_data.get(vessel_a, 0)
+            flow_key = flow_key_map.get(vessel_a, vessel_a)
+            flow = flow_data.get(flow_key, None)
             diameter = vessel_diameters.get(vessel_a, 2.0)
             
-            # Color by flow direction
-            if flow < -0.5:
+            # Color is chosen based on flow direction.
+            if flow is None or (isinstance(flow, float) and np.isnan(flow)):
+                color = '#cccccc'
+            elif flow < -0.5:
                 color = 'blue'
             elif flow < 0.5:
                 color = '#cccccc'
@@ -1537,22 +1583,23 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
             linewidth = max(0.5, diameter / 2.0)
             ax.plot([x1, x2], [y1, y2], color=color, linewidth=linewidth, zorder=2, alpha=0.8)
     
-    # Draw vessel labels at positions
+    # Vessel labels are drawn at their positions.
     for vessel, (x, y) in vessel_positions.items():
         diameter = vessel_diameters.get(vessel, 2.0)
-        flow = flow_data.get(vessel, 0)
+        flow_key = flow_key_map.get(vessel, vessel)
+        flow = flow_data.get(flow_key, None)
         
-        # Draw marker
+        # A marker is drawn at the vessel node.
         ax.plot(x, y, 'o', color='white', markersize=8, markeredgecolor='black', 
                 markeredgewidth=1.5, zorder=4)
         
-        # Add label with vessel info
-        label_text = f'{vessel}\n{diameter:.2f}mm\n{flow:.1f}mL/min'
+        # A label with vessel info is added.
+        label_text = f'{vessel}\n{diameter:.2f}mm\n{format_cow_flow_label(flow)}'
         ax.text(x, y - 0.6, label_text, fontsize=7, ha='center', va='top',
                 bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='black', alpha=0.8),
                 zorder=5)
     
-    # Add orientation labels
+    # Orientation labels are added.
     ax.text(0, -1.5, 'POSTERIOR', fontsize=11, fontweight='bold', ha='center',
             bbox=dict(boxstyle='round,pad=0.4', fc='lightyellow', ec='gray', alpha=0.85))
     ax.text(0, 6.5, 'ANTERIOR', fontsize=11, fontweight='bold', ha='center',
@@ -1566,7 +1613,7 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
     ax.set_ylim(-2, 7)
     ax.set_title('Circle of Willis - Patient-Specific Anatomy', fontsize=14, fontweight='bold', pad=20)
     
-    # Legend
+    # The legend is added.
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], color='red', linewidth=2, label='Forward flow'),
@@ -1583,164 +1630,6 @@ def make_cow_topology_diagram(results_dir: Path, model_dir: Path, output_dir: Pa
     print("  [COW] fig_cow_topology.png")
 
 
-def make_subsystem_routing_diagram(output_dir: Path):
-    """
-    Creates schematic diagram of FirstBlood model architecture showing
-    Heart → Arterial Network → Peripherals routing.
-    """
-    from matplotlib.patches import FancyBboxPatch
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 6)
-    ax.axis('off')
-    
-    # Heart box
-    heart_box = FancyBboxPatch((0.5, 2), 1.5, 2, 
-                              boxstyle='round,pad=0.1', 
-                              edgecolor='darkred', facecolor='#ffcccc', 
-                              linewidth=2, zorder=2)
-    ax.add_patch(heart_box)
-    ax.text(1.25, 3, 'HEART\n(0D Lumped\nModel)', fontsize=10, fontweight='bold',
-            ha='center', va='center', zorder=3)
-    
-    # Arterial Network box
-    arterial_box = FancyBboxPatch((3, 1.5), 2.5, 3,
-                                 boxstyle='round,pad=0.1',
-                                 edgecolor='darkblue', facecolor='#cce5ff',
-                                 linewidth=2, zorder=2)
-    ax.add_patch(arterial_box)
-    ax.text(4.25, 3, 'ARTERIAL\nNETWORK\n(1D Vessels)\n205 vessels\n55-vessel topology',
-            fontsize=10, fontweight='bold', ha='center', va='center', zorder=3)
-    
-    # Peripherals box
-    peripherals_box = FancyBboxPatch((6.5, 2), 2.5, 2,
-                                    boxstyle='round,pad=0.1',
-                                    edgecolor='darkgreen', facecolor='#ccffcc',
-                                    linewidth=2, zorder=2)
-    ax.add_patch(peripherals_box)
-    ax.text(7.75, 3, 'PERIPHERALS\n(0D Windkessel)\n48 vascular beds',
-            fontsize=10, fontweight='bold', ha='center', va='center', zorder=3)
-    
-    # Arrows connecting boxes
-    from matplotlib.patches import FancyArrowPatch
-    arrow1 = FancyArrowPatch((2.0, 3), (3, 3),
-                            arrowstyle='->', mutation_scale=30, 
-                            linewidth=2.5, color='red', zorder=1)
-    ax.add_patch(arrow1)
-    
-    arrow2 = FancyArrowPatch((5.5, 3), (6.5, 3),
-                            arrowstyle='->', mutation_scale=30,
-                            linewidth=2.5, color='red', zorder=1)
-    ax.add_patch(arrow2)
-    
-    ax.set_title('FirstBlood Model Architecture', fontsize=14, fontweight='bold', pad=20)
-    
-    plt.tight_layout()
-    output_file = output_dir / 'fig7_subsystem_routing.png'
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print("  [7] fig7_subsystem_routing.png")
-
-
-def make_flow_distribution_pie(results_dir: Path, output_dir: Path):
-    """
-    Creates pie chart showing cardiac output distribution by organ system.
-    Loads flow data from arterial vessels and groups by anatomical region.
-    """
-    # Try to load flow data from arterial directory
-    arterial_dir = results_dir / 'arterial'
-    
-    if not arterial_dir.exists():
-        print("Warning: arterial directory not found, skipping flow distribution pie")
-        return
-    
-    # Load mean flow from key vessels
-    vessel_flows = {}
-    
-    # Scan arterial directory for vessel files
-    try:
-        for vessel_file in sorted(arterial_dir.glob('*.txt')):
-            vessel_id = vessel_file.stem
-            data = load_timeseries(vessel_file)
-            if data is not None:
-                time_idx = detect_time_column(data)
-                flow_idx = select_pulsatile_column(data, time_idx)
-                if time_idx is not None and flow_idx is not None:
-                    flow_col = data[:, flow_idx] * 1e6  # Convert to mL/min
-                    vessel_flows[vessel_id] = np.mean(flow_col)
-    except Exception:
-        print("Warning: Could not load arterial flow data, skipping flow distribution pie")
-        return
-    
-    if not vessel_flows:
-        print("Warning: No vessel flow data found, skipping flow distribution pie")
-        return
-    
-    # Define organ systems by vessel ID
-    organ_flows = {
-        'Brain': 0, 'Upper Limbs': 0, 'Kidneys': 0, 
-        'Liver/GI': 0, 'Lower Limbs': 0, 'Other': 0
-    }
-    
-    brain_vessels = ['A12', 'A16', 'A56']  # ICA, ICA, Basilar
-    upper_vessels = ['A4', 'A19']  # Subclavian arteries
-    kidney_vessels = ['A34', 'A38']  # Renal arteries
-    liver_vessels = ['A28', 'A35']  # Celiac, SMA
-    lower_vessels = ['A42', 'A43']  # Iliac arteries
-    
-    for vessel_id, flow in vessel_flows.items():
-        if vessel_id in brain_vessels:
-            organ_flows['Brain'] += flow
-        elif vessel_id in upper_vessels:
-            organ_flows['Upper Limbs'] += flow
-        elif vessel_id in kidney_vessels:
-            organ_flows['Kidneys'] += flow
-        elif vessel_id in liver_vessels:
-            organ_flows['Liver/GI'] += flow
-        elif vessel_id in lower_vessels:
-            organ_flows['Lower Limbs'] += flow
-        else:
-            organ_flows['Other'] += flow
-    
-    # Remove zero-flow organs and sum total
-    organ_flows = {k: v for k, v in organ_flows.items() if v > 0}
-    total_flow = sum(organ_flows.values())
-    
-    if total_flow <= 0:
-        print("Warning: No positive flows found, skipping flow distribution pie")
-        return
-    
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    colors = {
-        'Brain': '#d62728', 'Upper Limbs': '#1f77b4', 'Kidneys': '#2ca02c',
-        'Liver/GI': '#ff7f0e', 'Lower Limbs': '#9467bd', 'Other': '#8c564b'
-    }
-    
-    labels = list(organ_flows.keys())
-    flows = list(organ_flows.values())
-    patch_colors = [colors.get(label, '#cccccc') for label in labels]
-    
-    wedges, texts, autotexts = ax.pie(flows, labels=labels, colors=patch_colors,
-                                       autopct='%.1f%%', startangle=90,
-                                       textprops={'fontsize': 11, 'fontweight': 'bold'})
-    
-    # Add legend with absolute flows
-    legend_labels = [f'{label}: {flow:.0f} mL/min' for label, flow in zip(labels, flows)]
-    ax.legend(legend_labels, loc='upper left', bbox_to_anchor=(0.85, 1), fontsize=10)
-    
-    ax.set_title('Cardiac Output Distribution by Organ System', fontsize=14, fontweight='bold', pad=20)
-    
-    plt.tight_layout()
-    output_file = output_dir / 'fig_flow_distribution.png'
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print("  [DIST] fig_flow_distribution.png")
-
-
 def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional[float] = None):
     """
     Creates 3x3 grid of FLOW waveforms for major Circle of Willis vessels.
@@ -1750,7 +1639,7 @@ def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional
             [t, p_start, p_end, v_start, v_end, q_start, q_end, m_start, m_end, A_start, A_end, c_start, c_end]
         We use volume flow rate (q_start/q_end) or compute Q = v * A if needed.
     """
-    # Define the nine key CoW vessels
+    # The nine key CoW vessels are defined here.
     vessels = [
         ('A12', 'R-ICA'), ('A16', 'L-ICA'), ('A56', 'Basilar'),
         ('A70', 'R-MCA'), ('A73', 'L-MCA'), ('A77', 'ACoA'),
@@ -1782,7 +1671,7 @@ def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional
                 
                 if time_idx is not None and data.shape[1] >= 11:
                     time_col = data[:, time_idx]
-                    # Prefer volume flow rate (q_start/q_end); fall back to Q = v * A
+                    # Volume flow (q_start/q_end) is preferred; otherwise compute Q = v * A.
                     if data.shape[1] > 6:
                         flow_m3_s = 0.5 * (data[:, 5] + data[:, 6])
                     else:
@@ -1790,13 +1679,13 @@ def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional
                         area_m2 = 0.5 * (data[:, 9] + data[:, 10])
                         flow_m3_s = vel_m_s * area_m2
                     
-                    # Scale to mL/min for readability
+                    # The flow is scaled to mL/min for readability.
                     flow_ml_min = flow_m3_s * 6e7
                     
-                    # DEBUG: Print statistics
+                    # Basic flow statistics are printed for debugging.
                     print(f"  {vessel_id:4s} ({vessel_name:8s}): mean={np.mean(flow_ml_min):+.2f} mL/min, min={np.min(flow_ml_min):+.2f}, max={np.max(flow_ml_min):+.2f}")
                     
-                    # Extract last cycle
+                    # The last cycle is extracted.
                     if period is not None:
                         f_cycle, t_cycle = extract_last_cycle_time_window(flow_ml_min, time_col, period)
                         if f_cycle is not None:
@@ -1829,7 +1718,7 @@ def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional
         plt.close(fig)
         return
     
-    # Share y-axis across all subplots
+    # The y-axis is shared across all subplots.
     all_axes = axes.flatten()
     y_lim = None
     for ax in all_axes:
@@ -1854,77 +1743,6 @@ def make_cow_waveform_grid(results_dir: Path, output_dir: Path, period: Optional
     print("  [GRID] fig_cow_waveforms_grid.png")
 
 
-def make_pressure_gradient_heatmap(results_dir: Path, output_dir: Path):
-    """
-    Creates horizontal bar chart showing mean arterial pressure across vessels.
-    Colors vessels by pressure value to visualize pressure gradient.
-    """
-    arterial_dir = results_dir / 'arterial'
-    
-    if not arterial_dir.exists():
-        print("Warning: arterial directory not found, skipping pressure gradient heatmap")
-        return
-    
-    vessel_pressures = {}
-    
-    # Load mean pressure from all arterial vessels
-    try:
-        for vessel_file in arterial_dir.glob('*.txt'):
-            vessel_id = vessel_file.stem
-            data = load_timeseries(vessel_file)
-            if data is not None:
-                time_idx = detect_time_column(data)
-                pres_idx = select_pulsatile_column(data, time_idx)
-                
-                if time_idx is not None and pres_idx is not None:
-                    pres_col = data[:, pres_idx]
-                    pres_mmhg = (pres_col - PRESSURE_BASELINE) / 133.322
-                    vessel_pressures[vessel_id] = np.mean(pres_mmhg)
-    except Exception:
-        print("Warning: Could not load arterial pressures, skipping pressure gradient heatmap")
-        return
-    
-    if not vessel_pressures:
-        print("Warning: No vessel pressures found, skipping pressure gradient heatmap")
-        return
-    
-    # Sort by pressure and take top 30
-    sorted_vessels = sorted(vessel_pressures.items(), key=lambda x: x[1], reverse=True)[:30]
-    vessel_ids, pressures = zip(*sorted_vessels)
-    
-    fig, ax = plt.subplots(figsize=(10, 14))
-    
-    # Normalize pressures for colormap
-    pmin, pmax = min(pressures), max(pressures)
-    colors_norm = [(p - pmin) / (pmax - pmin) for p in pressures]
-    
-    import matplotlib.cm as cm
-    cmap = cm.get_cmap('RdYlBu_r')
-    colors = [cmap(c) for c in colors_norm]
-    
-    y_pos = np.arange(len(vessel_ids))
-    bars = ax.barh(y_pos, pressures, color=colors, edgecolor='black', linewidth=0.5)
-    
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(vessel_ids, fontsize=9)
-    ax.set_xlabel('Mean Arterial Pressure (mmHg)', fontsize=12, fontweight='bold')
-    ax.set_title('Mean Arterial Pressure Distribution', fontsize=14, fontweight='bold', pad=20)
-    ax.invert_yaxis()
-    
-    # Add colorbar
-    sm = cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=pmin, vmax=pmax))
-    sm.set_array([])
-    cbar = plt.colorbar(sm, ax=ax, pad=0.02)
-    cbar.set_label('Pressure (mmHg)', fontsize=11, fontweight='bold')
-    
-    plt.tight_layout()
-    output_file = output_dir / 'fig_pressure_gradient.png'
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print("  [PGRAD] fig_pressure_gradient.png")
-
-
 def add_anatomical_labels_to_tree(ax):
     """
     HELPER FUNCTION: Adds regional anatomical labels to the arterial tree diagram.
@@ -1933,7 +1751,7 @@ def add_anatomical_labels_to_tree(ax):
     Adds three main region labels (Circle of Willis, Thoracic Aorta, Lower Extremities)
     and key vessel annotations.
     """
-    # Main regional labels
+    # Main regional labels are added here.
     ax.text(0, 36, 'CIRCLE OF WILLIS', ha='center', fontsize=11, fontweight='bold',
             color='navy', bbox=dict(boxstyle='round,pad=0.5', fc='lightblue', 
                                    ec='navy', lw=2, alpha=0.85))
@@ -1946,7 +1764,7 @@ def add_anatomical_labels_to_tree(ax):
             color='darkgreen', bbox=dict(boxstyle='round,pad=0.4', fc='lightgreen',
                                         ec='darkgreen', lw=1.5, alpha=0.85))
     
-    # Key vessel annotations
+    # Key vessel annotations are added here.
     key_vessels = [
         (1.0, 28.8, 'R-ICA'),
         (-1.0, 28.8, 'L-ICA'),
@@ -1965,7 +1783,7 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
     Creates side-by-side comparison of patient vs reference model (Abel_ref2) CoW flows.
     Shows differences in cerebral hemodynamics between patient and template.
     """
-    # Load patient flow data
+    # Patient flow data is loaded.
     patient_flow_file = patient_dir / 'cerebral_flow_summary.csv'
     template_flow_file = template_dir / 'cerebral_flow_summary.csv'
     
@@ -1977,7 +1795,7 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
         print("Warning: Template cerebral_flow_summary.csv not found, skipping comparison")
         return
     
-    # Load data
+    # Data is loaded into patient and template dictionaries.
     patient_flows = {}
     template_flows = {}
     
@@ -2011,14 +1829,14 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
         print("Warning: Could not parse template flow file, skipping comparison")
         return
     
-    # Define CoW vessels in order
+    # CoW vessels are defined in display order.
     vessels_order = [
         'R-ICA', 'L-ICA', 'Basilar', 'R-MCA', 'L-MCA',
         'R-ACA', 'L-ACA', 'R-PCA', 'L-PCA', 'ACoA',
         'R-PCoA', 'L-PCoA'
     ]
     
-    # Extract flows in order
+    # Flow values are extracted in display order.
     patient_data = [patient_flows.get(v, 0) for v in vessels_order]
     template_data = [template_flows.get(v, 0) for v in vessels_order]
     
@@ -2027,7 +1845,7 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
     x = np.arange(len(vessels_order))
     width = 0.6
     
-    # Patient subplot
+    # The patient subplot is drawn.
     colors_p = ['red' if f > 0 else 'blue' if f < 0 else 'gray' for f in patient_data]
     ax1.barh(x, patient_data, width, color=colors_p, edgecolor='black', linewidth=0.7)
     ax1.axvline(x=0, color='k', linestyle='-', linewidth=1)
@@ -2037,7 +1855,7 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
     ax1.set_title('Patient CoW Flows', fontsize=12, fontweight='bold')
     ax1.grid(True, alpha=0.3, axis='x', linestyle='--')
     
-    # Template subplot
+    # The template subplot is drawn.
     colors_t = ['red' if f > 0 else 'blue' if f < 0 else 'gray' for f in template_data]
     ax2.barh(x, template_data, width, color=colors_t, edgecolor='black', linewidth=0.7)
     ax2.axvline(x=0, color='k', linestyle='-', linewidth=1)
@@ -2047,7 +1865,7 @@ def make_patient_template_comparison(patient_dir: Path, template_dir: Path, outp
     ax2.set_title('Abel_ref2 Reference Flows', fontsize=12, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis='x', linestyle='--')
     
-    # Calculate percent difference for suptitle
+    # The percent difference is calculated for the suptitle.
     if template_data:
         avg_pct_diff = np.mean([abs(p - t) / (abs(t) + 1) * 100 for p, t in zip(patient_data, template_data)])
         fig.suptitle(f'Patient-Specific vs Reference Model: CoW Flow Comparison (Avg Diff: {avg_pct_diff:.1f}%)',
@@ -2080,7 +1898,7 @@ def main():
                        help='Output root directory')
     args = parser.parse_args()
     
-    # Paths are relative to the script location for portability
+    # Paths are built relative to the script location for portability.
     project_root = Path(__file__).parent.parent
     results_base = project_root / 'projects' / 'simple_run' / 'results'
     
@@ -2144,15 +1962,12 @@ def main():
     model_dir = project_root / 'models' / model_name
     make_multisite_waveform_panels(results_dir, model_dir, output_dir, period)
     
-    # Add new Circle of Willis visualization functions (Priority 1-7)
+    # Circle of Willis visualization functions (priority 1-7) are added here.
     bio_output_dir = output_root / model_name / 'biological_analysis'
     make_cow_topology_diagram(results_dir, model_dir, bio_output_dir)
-    make_subsystem_routing_diagram(output_dir)
-    make_flow_distribution_pie(results_dir, output_dir)
     make_cow_waveform_grid(results_dir, output_dir, period)
-    make_pressure_gradient_heatmap(results_dir, output_dir)
     
-    # Patient vs template comparison
+    # Patient vs template comparison is added here.
     template_results = project_root / 'projects' / 'simple_run' / 'results' / 'Abel_ref2'
     template_bio_output = output_root / 'Abel_ref2' / 'biological_analysis'
     if template_results.exists() and template_bio_output.exists():

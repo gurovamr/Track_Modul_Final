@@ -16,6 +16,16 @@ warnings.filterwarnings('ignore')
 
 
 PRESSURE_BASELINE = 101325
+FLOW_UNIT_THRESHOLD = 0.1
+
+GLOBAL_REFERENCE_RANGES = {
+    'SBP': '90-120 mmHg',
+    'DBP': '60-80 mmHg',
+    'MAP': '70-100 mmHg',
+    'HR': '60-100 bpm',
+    'SV': '60-100 mL',
+    'CO': '4.0-8.0 L/min',
+}
 
 
 @dataclass
@@ -169,6 +179,96 @@ def select_pulsatile_column(data: np.ndarray, time_col_idx: int) -> Optional[int
             best_col_idx = col_idx
     
     return best_col_idx
+
+
+def select_volumetric_flow_column(data: np.ndarray, time_col_idx: int) -> Optional[int]:
+    """
+    Selects a volumetric flow column from common output formats.
+    """
+    if data.ndim != 2 or data.shape[0] < 10:
+        return None
+    ncols = data.shape[1]
+    if ncols >= 13:
+        candidates = [5, 6]
+        best_idx = None
+        best_std = -1.0
+        for idx in candidates:
+            col = data[:, idx]
+            if np.any(np.isnan(col)) or np.any(np.isinf(col)):
+                continue
+            col_std = float(np.nanstd(col))
+            if col_std > best_std:
+                best_std = col_std
+                best_idx = idx
+        if best_idx is not None:
+            return best_idx
+        return 5
+    if ncols == 3:
+        return 2
+    if ncols == 2:
+        return 1
+    candidates = [i for i in range(ncols) if i != time_col_idx]
+    if not candidates:
+        return None
+    pressure_like = []
+    for idx in candidates:
+        col = data[:, idx]
+        if np.any(np.isnan(col)) or np.any(np.isinf(col)):
+            continue
+        if np.nanmedian(np.abs(col)) > 1e4:
+            pressure_like.append(idx)
+    fallback = [i for i in candidates if i not in pressure_like]
+    if fallback:
+        return fallback[0]
+    return candidates[0]
+
+
+def extract_volumetric_flow_series(data: np.ndarray, time_col_idx: int) -> Tuple[Optional[np.ndarray], List[int], str]:
+    """
+    Extracts a volumetric flow series from common FirstBlood output formats.
+    """
+    if data.ndim != 2 or data.shape[0] < 10:
+        return None, [], "invalid data"
+    ncols = data.shape[1]
+    if ncols >= 13:
+        vfrs = data[:, 5]
+        vfre = data[:, 6]
+        flow = 0.5 * (vfrs + vfre)
+        return flow, [5, 6], "avg(volume_flow_rate_start, volume_flow_rate_end)"
+    if ncols == 3:
+        return data[:, 2], [2], "node volume_flow_rate"
+    if ncols == 2:
+        return data[:, 1], [1], "edge volume_flow_rate"
+    flow_idx = select_volumetric_flow_column(data, time_col_idx)
+    if flow_idx is None:
+        return None, [], "no flow column detected"
+    return data[:, flow_idx], [flow_idx], "heuristic flow column"
+
+
+def detect_flow_unit(flow_cycle: np.ndarray) -> Tuple[str, float]:
+    """
+    Detects flow units based on magnitude and returns unit label and scale to mL/min.
+    """
+    max_abs = float(np.nanmax(np.abs(flow_cycle)))
+    if max_abs < 1e-3:
+        return "m^3/s", 1e6 * 60.0
+    if max_abs < 1e3:
+        return "mL/s", 60.0
+    return "mL/min", 1.0
+
+
+def print_flow_file_debug(vessel_name: str, data: np.ndarray) -> None:
+    """
+    Prints detailed debug info for a cerebral vessel file.
+    """
+    print("\n[Debug] {} file diagnostics".format(vessel_name))
+    print("  Array shape: {}".format(data.shape))
+    print("  First 5 rows:\n{}".format(np.array2string(data[:5], precision=6)))
+    for col_idx in range(data.shape[1]):
+        col = data[:, col_idx]
+        col_min = float(np.nanmin(col))
+        col_max = float(np.nanmax(col))
+        print("  Col {:>2d} min/max: {:.6e} / {:.6e}".format(col_idx, col_min, col_max))
 
 
 def choose_aortic_signals(results_dir: Path) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
@@ -390,19 +490,22 @@ def compute_convergence_rms(cycle1: np.ndarray, cycle2: np.ndarray) -> float:
     return rms_pct
 
 
-def compute_cerebral_flow_summary(results_dir: Path, output_dir: Path, cycle_period: Optional[float]):
+def compute_cerebral_flow_summary(results_dir: Path,
+                                  output_dir: Path,
+                                  cycle_period: Optional[float],
+                                  co_lmin: Optional[float]) -> Tuple[Dict[str, float], Optional[float], Optional[float]]:
     """
     Calculates mean flow rates for key cerebral vessels over the last cardiac cycle and saves to CSV.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     
     vessel_map = {
-        'R_ICA': 'A12',
         'L_ICA': 'A16',
+        'R_ICA': 'A12',
         'Basilar': 'A56',
         'ACoA': 'A77',
-        'R_PCoA': 'A62',
         'L_PCoA': 'A63',
+        'R_PCoA': 'A62',
     }
     
     cerebral_flows = {}
@@ -419,54 +522,177 @@ def compute_cerebral_flow_summary(results_dir: Path, output_dir: Path, cycle_per
             if data is None or data.shape[0] < 10:
                 cerebral_flows[vessel_name] = np.nan
                 continue
+
+            print_flow_file_debug(vessel_name, data)
             
             time_idx = detect_time_column(data)
             if time_idx is None:
                 time_idx = 0
             
-            flow_idx = select_pulsatile_column(data, time_idx)
-            if flow_idx is None:
-                if data.shape[1] >= 2:
-                    flow_idx = 1
-                else:
+            flow_col, flow_cols, flow_note = extract_volumetric_flow_series(data, time_idx)
+            if flow_col is None:
+                cerebral_flows[vessel_name] = np.nan
+                continue
+            
+            time_col = data[:, time_idx]
+            flow_cycle, _flow_time_cycle = extract_last_cycle(flow_col, time_col)
+            if flow_cycle is None or len(flow_cycle) < 2:
+                if cycle_period is not None and cycle_period > 0:
+                    t_end = time_col[-1]
+                    t_start = t_end - cycle_period
+                    mask = (time_col >= t_start) & (time_col <= t_end)
+                    flow_cycle = flow_col[mask]
+                if flow_cycle is None or len(flow_cycle) < 2:
                     cerebral_flows[vessel_name] = np.nan
                     continue
             
-            time_col = data[:, time_idx]
-            flow_col = data[:, flow_idx]
-            
-            if cycle_period is not None and cycle_period > 0:
-                t_end = time_col[-1]
-                t_start = t_end - cycle_period
-                mask = (time_col >= t_start) & (time_col <= t_end)
-                flow_cycle = flow_col[mask]
-                
-                if len(flow_cycle) > 5:
-                    mean_flow_m3s = np.mean(flow_cycle)
-                else:
-                    mean_flow_m3s = np.mean(flow_col[-100:])
-            else:
-                mean_flow_m3s = np.mean(flow_col[-100:])
-            
-            mean_flow_mlmin = mean_flow_m3s * 60.0 * 1e6
+            mean_flow = float(np.mean(flow_cycle))
+            unit_label, unit_scale = detect_flow_unit(flow_cycle)
+            mean_flow_mlmin = mean_flow * unit_scale
             cerebral_flows[vessel_name] = mean_flow_mlmin
+            
+            print("\n[Debug] {} flow selection".format(vessel_name))
+            print("  Flow column(s): {}".format(flow_cols))
+            print("  Flow selection: {}".format(flow_note))
+            print("  Unit assumption: {}".format(unit_label))
+            print("  First 5 samples: {}".format(np.array2string(flow_cycle[:5], precision=6)))
+            print("  Min: {:.6e}  Max: {:.6e}".format(float(np.min(flow_cycle)), float(np.max(flow_cycle))))
             
         except Exception:
             cerebral_flows[vessel_name] = np.nan
     
-    df = pd.DataFrame([cerebral_flows])
+    q_brain_mlmin = None
+    brain_fraction = None
+    q_terms = [
+        cerebral_flows.get('L_ICA', np.nan),
+        cerebral_flows.get('R_ICA', np.nan),
+        cerebral_flows.get('Basilar', np.nan),
+    ]
+    if any(isinstance(x, float) and np.isnan(x) for x in q_terms):
+        q_brain_mlmin = np.nan
+    else:
+        q_brain_mlmin = float(np.sum(q_terms))
+    if co_lmin is not None and not (isinstance(co_lmin, float) and np.isnan(co_lmin)):
+        if q_brain_mlmin is not None and not (isinstance(q_brain_mlmin, float) and np.isnan(q_brain_mlmin)):
+            brain_fraction = q_brain_mlmin / (co_lmin * 1000.0)
+            if brain_fraction < 0.05 or brain_fraction > 0.30:
+                print("\nWarning: brain_fraction {:.4f} outside expected range [0.05, 0.30]".format(brain_fraction))
+
+    df = pd.DataFrame([{
+        **cerebral_flows,
+        'Q_brain_mlmin': q_brain_mlmin,
+        'brain_fraction': brain_fraction,
+    }])
     csv_file = output_dir / 'cerebral_flow_summary.csv'
     df.to_csv(csv_file, index=False)
     
-    print("\nCerebral flow summary (mL/min):")
-    for vessel_name, flow in cerebral_flows.items():
-        if np.isnan(flow):
-            print("  {:<12s}: N/A".format(vessel_name))
+    plot_cerebral_flow_barchart(cerebral_flows, output_dir)
+    
+    return cerebral_flows, q_brain_mlmin, brain_fraction
+
+
+def plot_cerebral_flow_barchart(cerebral_flows: Dict[str, float], output_dir: Path) -> None:
+    """
+    Saves a bar chart of mean cerebral vessel flows (mL/min).
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    labels = ['L_ICA', 'R_ICA', 'Basilar', 'ACoA', 'L_PCoA', 'R_PCoA']
+    values = []
+    colors = []
+    for label in labels:
+        value = cerebral_flows.get(label, np.nan)
+        if value is None or (isinstance(value, float) and np.isnan(value)):
+            values.append(0.0)
+            colors.append('lightgray')
         else:
-            print("  {:<12s}: {:>8.2f}".format(vessel_name, flow))
+            values.append(value)
+            colors.append('tab:blue')
+    
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bars = ax.bar(labels, values, color=colors)
+    ax.set_ylabel('Mean Flow (mL/min)', fontsize=12)
+    ax.set_title('Cerebral Flow Distribution - Last Cycle', fontsize=13)
+    ax.grid(True, axis='y', alpha=0.3)
+    
+    for bar, label in zip(bars, labels):
+        value = cerebral_flows.get(label, np.nan)
+        if value is None or (isinstance(value, float) and np.isnan(value)):
+            ax.text(bar.get_x() + bar.get_width() / 2.0, 0.0, 'N/A',
+                    ha='center', va='bottom', fontsize=9, color='gray')
+        else:
+            y_pos = bar.get_height()
+            va = 'bottom' if y_pos >= 0 else 'top'
+            ax.text(bar.get_x() + bar.get_width() / 2.0, y_pos, '{:.1f}'.format(value),
+                    ha='center', va=va, fontsize=9)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'cerebral_flow_barchart.png', dpi=100, bbox_inches='tight')
+    plt.close()
 
 
-def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
+def convert_flow_series_to_ml_s(flow_values: np.ndarray) -> Tuple[np.ndarray, str]:
+    """
+    Converts a flow series to mL/s using a simple unit heuristic.
+    """
+    if flow_values is None or len(flow_values) == 0:
+        return flow_values, 'N/A'
+    max_abs = np.nanmax(np.abs(flow_values))
+    if max_abs > FLOW_UNIT_THRESHOLD:
+        return flow_values, 'assumed mL/s'
+    return flow_values * 1e6, 'assumed m^3/s'
+
+
+def format_value(value: Optional[float], fmt: str, suffix: str) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    return (fmt.format(value) + suffix).strip()
+
+
+def build_global_summary_lines(metrics: HemodynamicMetrics) -> List[str]:
+    lines = []
+    lines.append("GLOBAL HEMODYNAMIC SUMMARY")
+    lines.append("-" * 80)
+    lines.append("SBP: {:>12s}  (ref {})".format(
+        format_value(metrics.P_sys, "{:.1f}", " mmHg"), GLOBAL_REFERENCE_RANGES['SBP']))
+    lines.append("DBP: {:>12s}  (ref {})".format(
+        format_value(metrics.P_dia, "{:.1f}", " mmHg"), GLOBAL_REFERENCE_RANGES['DBP']))
+    lines.append("MAP: {:>12s}  (ref {})".format(
+        format_value(metrics.P_map, "{:.1f}", " mmHg"), GLOBAL_REFERENCE_RANGES['MAP']))
+    lines.append("HR : {:>12s}  (ref {})".format(
+        format_value(metrics.HR, "{:.1f}", " bpm"), GLOBAL_REFERENCE_RANGES['HR']))
+    lines.append("SV : {:>12s}  (ref {})".format(
+        format_value(metrics.SV_ml, "{:.1f}", " mL"), GLOBAL_REFERENCE_RANGES['SV']))
+    lines.append("CO : {:>12s}  (ref {})".format(
+        format_value(metrics.CO_lmin, "{:.2f}", " L/min"), GLOBAL_REFERENCE_RANGES['CO']))
+    lines.append("")
+    return lines
+
+
+def build_cerebral_summary_lines(cerebral_flows: Dict[str, float],
+                                 q_brain_mlmin: Optional[float],
+                                 brain_fraction: Optional[float]) -> List[str]:
+    lines = []
+    lines.append("CEREBRAL HEMODYNAMIC DISTRIBUTION")
+    lines.append("-" * 80)
+    for vessel_name, flow in cerebral_flows.items():
+        if flow is None or (isinstance(flow, float) and np.isnan(flow)):
+            lines.append("{:<12s}: N/A".format(vessel_name))
+        else:
+            lines.append("{:<12s}: {:>8.2f} mL/min".format(vessel_name, flow))
+    lines.append("Q_brain:     {}".format(format_value(q_brain_mlmin, "{:.2f}", " mL/min")))
+    if brain_fraction is None or (isinstance(brain_fraction, float) and np.isnan(brain_fraction)):
+        lines.append("Brain/CO:    N/A")
+    else:
+        lines.append("Brain/CO:    {:.4f}".format(brain_fraction))
+    lines.append("")
+    return lines
+
+
+def write_summary_and_csv(metrics: HemodynamicMetrics,
+                          output_dir: Path,
+                          cerebral_flows: Dict[str, float],
+                          q_brain_mlmin: Optional[float],
+                          brain_fraction: Optional[float]):
     """
     Generates a readable summary report and exports the metrics to CSV.
     """
@@ -499,34 +725,13 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     lines.append("Mean time step (dt):   {:.6e} s".format(metrics.dt_mean))
     lines.append("")
     
-    lines.append("HEMODYNAMIC METRICS")
-    lines.append("-" * 80)
-    
+    lines.extend(build_global_summary_lines(metrics))
     if metrics.cycle_period is not None:
         lines.append("Cycle period:          {:.4f} s".format(metrics.cycle_period))
-    
-    if metrics.HR is not None:
-        lines.append("Heart rate (HR):       {:.1f} bpm".format(metrics.HR))
-    
-    if metrics.P_sys is not None:
-        lines.append("Systolic pressure:     {:.1f} mmHg".format(metrics.P_sys))
-    
-    if metrics.P_dia is not None:
-        lines.append("Diastolic pressure:    {:.1f} mmHg".format(metrics.P_dia))
-    
-    if metrics.P_map is not None:
-        lines.append("Mean pressure (MAP):   {:.1f} mmHg".format(metrics.P_map))
-    
-    if metrics.SV_ml is not None:
-        lines.append("Stroke volume:         {:.1f} mL".format(metrics.SV_ml))
-    
-    if metrics.CO_lmin is not None:
-        lines.append("Cardiac output:        {:.2f} L/min".format(metrics.CO_lmin))
-    
     if metrics.rms_convergence_pct is not None:
         lines.append("Convergence RMS%:      {:.4f} %".format(metrics.rms_convergence_pct))
-    
     lines.append("")
+    lines.extend(build_cerebral_summary_lines(cerebral_flows, q_brain_mlmin, brain_fraction))
     lines.append("=" * 80)
     lines.append("OUTPUT FILES GENERATED")
     lines.append("=" * 80)
@@ -535,6 +740,7 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     lines.append("  - aortic_pressure_last_cycle.png")
     lines.append("  - aortic_flow_last_cycle.png (if data available)")
     lines.append("  - cycle_overlay_aortic_pressure.png")
+    lines.append("  - cerebral_flow_barchart.png")
     lines.append("=" * 80)
     lines.append("")
     
@@ -560,8 +766,9 @@ def write_summary_and_csv(metrics: HemodynamicMetrics, output_dir: Path):
     metrics_df.to_csv(csv_file, index=False)
 
 
-def make_plots(results_dir: Path, output_dir: Path, 
-               pressure_file: Path, velocity_file: Optional[Path] = None):
+def make_plots(results_dir: Path, output_dir: Path,
+               pressure_file: Path,
+               aortic_flow_file: Optional[Path] = None):
     """
     Creates visualization plots showing pressure cycles and convergence.
     """
@@ -591,15 +798,49 @@ def make_plots(results_dir: Path, output_dir: Path,
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.plot(t_cycle, p_cycle, 'b-', linewidth=2)
             ax.fill_between(t_cycle, p_cycle, alpha=0.3)
+            sbp = np.max(p_cycle)
+            dbp = np.min(p_cycle)
+            ax.axhline(sbp, color='red', linestyle='--', linewidth=1, label='SBP')
+            ax.axhline(dbp, color='green', linestyle='--', linewidth=1, label='DBP')
             ax.set_xlabel('Time (s)', fontsize=12)
             ax.set_ylabel('Pressure (mmHg)', fontsize=12)
             ax.set_title('Aortic Pressure - Last Cycle', fontsize=13)
+            ax.legend(fontsize=10)
             ax.grid(True, alpha=0.3)
             plt.savefig(output_dir / "aortic_pressure_last_cycle.png", 
                        dpi=100, bbox_inches='tight')
             plt.close()
     except Exception:
         pass
+
+    if aortic_flow_file is not None and aortic_flow_file.exists():
+        data_flow = load_timeseries(aortic_flow_file)
+        if data_flow is not None:
+            flow_time_idx = detect_time_column(data_flow)
+            if flow_time_idx is not None:
+                flow_col_idx = select_pulsatile_column(data_flow, flow_time_idx)
+                if flow_col_idx is not None:
+                    flow_time = data_flow[:, flow_time_idx]
+                    flow_col = data_flow[:, flow_col_idx]
+                    flow_cycle, flow_t_cycle = extract_last_cycle(flow_col, flow_time)
+                    if flow_cycle is not None and flow_t_cycle is not None:
+                        flow_cycle_ml_s, unit_note = convert_flow_series_to_ml_s(flow_cycle)
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        ax.plot(flow_t_cycle, flow_cycle_ml_s, color='tab:blue', linewidth=2)
+                        ax.fill_between(flow_t_cycle, 0, flow_cycle_ml_s,
+                                        where=flow_cycle_ml_s >= 0,
+                                        color='tab:blue', alpha=0.3, label='Forward SV')
+                        ax.fill_between(flow_t_cycle, 0, flow_cycle_ml_s,
+                                        where=flow_cycle_ml_s < 0,
+                                        color='tab:red', alpha=0.3, label='Reverse SV')
+                        ax.set_xlabel('Time (s)', fontsize=12)
+                        ax.set_ylabel('Flow (mL/s)', fontsize=12)
+                        ax.set_title('Aortic Flow - Last Cycle', fontsize=13)
+                        ax.legend(fontsize=10)
+                        ax.grid(True, alpha=0.3)
+                        plt.savefig(output_dir / "aortic_flow_last_cycle.png",
+                                   dpi=100, bbox_inches='tight')
+                        plt.close()
     
     try:
         c1, t1, c2, t2 = extract_two_cycles(pressure_col, time_col)
@@ -664,10 +905,9 @@ def main():
     
     if args.output_root:
         output_root = Path(args.output_root)
+        output_dir = output_root / model_name / 'biological_analysis'
     else:
-        output_root = project_root / 'pipeline' / 'output'
-    
-    output_dir = output_root / model_name / 'biological_analysis'
+        output_dir = project_root / 'pipeline' / 'output' / model_name / 'biological_analysis'
     
     print("")
     print("=" * 80)
@@ -678,7 +918,7 @@ def main():
     print("Output dir:   {}".format(output_dir))
     print("")
     
-    pressure_file, velocity_file, diameter_file = choose_aortic_signals(results_dir)
+    pressure_file, _velocity_file, _diameter_file = choose_aortic_signals(results_dir)
     
     if pressure_file is None:
         print("Error: Could not locate aortic signals.")
@@ -737,8 +977,8 @@ def main():
                     
                     co_cycle, co_t_cycle = extract_last_cycle(co_flow, co_time)
                     if co_cycle is not None and co_t_cycle is not None:
-                        sv_m3 = np.trapz(co_cycle, co_t_cycle)
-                        sv_ml = abs(sv_m3) * 1e6
+                        co_cycle_ml_s, unit_note = convert_flow_series_to_ml_s(co_cycle)
+                        sv_ml = float(np.trapz(co_cycle_ml_s, co_t_cycle))
                         
                         if period is not None and period > 0:
                             co_lmin = (sv_ml / 1000.0) * (60.0 / period)
@@ -783,11 +1023,24 @@ def main():
     print("  CO: {:.2f} L/min".format(metrics.CO_lmin) if metrics.CO_lmin else "  CO: N/A")
     if metrics.rms_convergence_pct is not None:
         print("  Convergence RMS%: {:.4f}".format(metrics.rms_convergence_pct))
+
+    cerebral_flows, q_brain_mlmin, brain_fraction = compute_cerebral_flow_summary(
+        results_dir,
+        output_dir,
+        metrics.cycle_period,
+        metrics.CO_lmin,
+    )
+    
+    print("\nGlobal hemodynamic summary:")
+    for line in build_global_summary_lines(metrics)[2:-1]:
+        print("  {}".format(line))
+    print("\nCerebral hemodynamic distribution (mL/min):")
+    for line in build_cerebral_summary_lines(cerebral_flows, q_brain_mlmin, brain_fraction)[2:-1]:
+        print("  {}".format(line))
     
     print("\nWriting outputs...")
-    write_summary_and_csv(metrics, output_dir)
-    compute_cerebral_flow_summary(results_dir, output_dir, metrics.cycle_period)
-    make_plots(results_dir, output_dir, pressure_file, velocity_file)
+    write_summary_and_csv(metrics, output_dir, cerebral_flows, q_brain_mlmin, brain_fraction)
+    make_plots(results_dir, output_dir, pressure_file, co_file)
     
     print("")
     print("=" * 80)

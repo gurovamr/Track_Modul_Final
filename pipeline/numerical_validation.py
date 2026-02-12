@@ -316,6 +316,35 @@ def extract_cycles(signal_data: np.ndarray,
     return list(reversed(cycles))
 
 
+def select_signal_column(data: np.ndarray, time_col_idx: int, prefer_last: bool = False) -> Optional[int]:
+    """
+    Selects a signal column excluding time. If prefer_last is True, uses the last non-time column.
+    Otherwise selects the column with the largest standard deviation.
+    """
+    if data.ndim != 2 or data.shape[1] < 2:
+        return None
+
+    if prefer_last:
+        for col_idx in range(data.shape[1] - 1, -1, -1):
+            if col_idx != time_col_idx:
+                return col_idx
+
+    best_idx = None
+    best_std = 0.0
+    for col_idx in range(data.shape[1]):
+        if col_idx == time_col_idx:
+            continue
+        col = data[:, col_idx]
+        if np.any(np.isnan(col)) or np.any(np.isinf(col)):
+            continue
+        col_std = float(np.std(col))
+        if col_std > best_std:
+            best_std = col_std
+            best_idx = col_idx
+
+    return best_idx
+
+
 def compute_cycle_rms(cycle1: np.ndarray, cycle2: np.ndarray) -> float:
     """
     RMS percent error between two cycles is computed using the formula: RMS% = RMS(cycle1 - cycle2) / mean(|cycle2|) * 100
@@ -611,6 +640,72 @@ def plot_diagnostics(output_dir: Path, all_cycles_data: Dict[str, Any]):
             pass
 
 
+def plot_aorta_cycle_overlays(results_dir: Path, output_dir: Path, n_cycles: int = 5):
+    """
+    Creates overlay plots of the last N cycles for aortic pressure and aortic flow.
+    This helps verify periodic steady-state convergence.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    targets = [
+        (results_dir / 'heart_kim_lit' / 'aorta.txt', 'aorta_pressure', False),
+        (results_dir / 'heart_kim_lit' / 'L_lv_aorta.txt', 'aorta_flow', True),
+    ]
+
+    for filepath, tag, prefer_last in targets:
+        if not filepath.exists():
+            print(f"Warning: {filepath.name} not found, skipping {tag} overlay")
+            continue
+
+        data = load_timeseries(filepath)
+        if data is None or data.shape[0] < 100 or data.shape[1] < 2:
+            print(f"Warning: Insufficient data in {filepath.name}, skipping {tag} overlay")
+            continue
+
+        time_idx = detect_time_column(data)
+        if time_idx is None:
+            print(f"Warning: Could not detect time column in {filepath.name}, skipping {tag} overlay")
+            continue
+
+        signal_idx = select_signal_column(data, time_idx, prefer_last=prefer_last)
+        if signal_idx is None:
+            print(f"Warning: Could not select signal column in {filepath.name}, skipping {tag} overlay")
+            continue
+
+        time_col = data[:, time_idx]
+        signal_col = data[:, signal_idx]
+
+        period, _ = estimate_period_autocorr(signal_col, time_col)
+        if period is None:
+            print(f"Warning: Could not estimate period in {filepath.name}, skipping {tag} overlay")
+            continue
+
+        cycles = extract_cycles(signal_col, time_col, period, n_cycles=n_cycles)
+        if len(cycles) < 2:
+            print(f"Warning: Not enough cycles in {filepath.name}, skipping {tag} overlay")
+            continue
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        colors = plt.cm.plasma(np.linspace(0, 1, len(cycles)))
+
+        for i, (start_idx, end_idx, _) in enumerate(cycles):
+            t_cycle = time_col[start_idx:end_idx]
+            s_cycle = signal_col[start_idx:end_idx]
+            t_norm = (t_cycle - t_cycle[0]) / (t_cycle[-1] - t_cycle[0] + 1e-16)
+            ax.plot(t_norm, s_cycle, '-', linewidth=2, color=colors[i], alpha=0.8,
+                    label=f'Cycle {i + 1}')
+
+        ax.set_xlabel('Normalized time within cycle')
+        ax.set_ylabel('Signal value')
+        ax.set_title(f'Last {len(cycles)} Cycles Overlay: {tag.replace("_", " ").title()}')
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8)
+
+        output_file = output_dir / f"fig_{tag}_last_{len(cycles)}_cycles.png"
+        plt.savefig(output_file, dpi=120, bbox_inches='tight')
+        plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Numerical validation of FirstBlood simulation results'
@@ -667,6 +762,8 @@ def main():
     write_reports(output_dir, integrity_checks, convergence_results, model_name)
     
     plot_diagnostics(output_dir, all_cycles_data)
+
+    plot_aorta_cycle_overlays(results_dir, output_dir, n_cycles=5)
     
 
     print("Output directory: {}".format(output_dir))
