@@ -270,7 +270,7 @@ def get_absent_vessels(variants: Optional[Dict]) -> List[Tuple[Optional[str], st
     
     absent = []
     
-    # Convert the variant keys to the format we use internally
+    # Convert the variant keys to the correct format
     variant_to_key = {
         "L-A1": ("L", "A1"), "R-A1": ("R", "A1"),
         "L-A2": ("L", "A2"), "R-A2": ("R", "A2"),
@@ -633,7 +633,6 @@ Example:
     df.to_csv(arterial_path, index=False)
     print(f"  Modified {len(modifications)} CoW vessels total")
 
-    # Keep the template main.csv as-is (we don't need to regenerate it)
     print("\nStep 3: Keeping template main.csv...")
 
     # Save log
