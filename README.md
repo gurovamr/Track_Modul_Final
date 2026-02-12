@@ -35,10 +35,10 @@ This project extends the FirstBlood framework by:
 - The systemic topology remains based on the Abel_ref2 reference model, while cerebral vessel geometry is updated per patient.
 
 ## Project Strtucture
-source/              → Core FirstBlood solver
-projects/            → Compilable simulations
-models/              → Model input CSV files
-pipeline/            → Patient data integration & analysis scripts 
+- source/              → Core FirstBlood solver
+- projects/            → Compilable simulations
+- models/              → Model input CSV files
+- pipeline/            → Patient data integration & analysis scripts 
 
 ### Build & Run
 make -f make_*.mk
