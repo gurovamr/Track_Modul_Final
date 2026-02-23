@@ -3,7 +3,7 @@
 Patient-specific Circle of Willis model generator
 
 Usage:
-  python3 data_generation.py
+    python3 01_data_generation.py
 
 Output:
   ~/first_blood/models/patient_<pid>/
@@ -165,6 +165,23 @@ def side_from_endpoints(
     if right_is_positive_x:
         return "R" if x_mean >= 0.0 else "L"
     return "R" if x_mean <= 0.0 else "L"
+
+
+def side_from_connected_known_nodes(
+    start_id: int,
+    end_id: int,
+    node_known_sides: Dict[int, set]
+) -> Optional[str]:
+    """Infer side from already-resolved segments sharing endpoints."""
+    candidates = set()
+    if start_id in node_known_sides:
+        candidates.update(node_known_sides[start_id])
+    if end_id in node_known_sides:
+        candidates.update(node_known_sides[end_id])
+
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    return None
 
 
 def parse_patient_features(features_json: Any) -> List[Dict[str, Any]]:
@@ -464,7 +481,7 @@ def main():
   3. Keep peripherals & main.csv
 
 Example:
-  python3 data_generation.py
+    python3 01_data_generation.py
         """
     )
     ap.add_argument("--pid", default=None, help="Patient ID (e.g., 025)")
@@ -519,24 +536,60 @@ Example:
     fb_map = build_firstblood_mapping()
     candidates: List[Dict[str, Any]] = []
 
-    # Filtering for required segments
+    # First pass: direct side inference from node labels / coordinates
+    parsed_segs: List[Dict[str, Any]] = []
+    node_known_sides: Dict[int, set] = {}
     for s in segs:
         canon = normalize_segment_name(s["raw_name"])
         if canon is None or canon not in CANONICAL:
             continue
 
-        # Determine which side the vessel is on
-        side = side_from_endpoints(id_to_xyz, node_side_hint, s["start_id"], s["end_id"], right_is_pos_x, r_x, l_x)
-        # Convert measurements from mm to meters
-        length_m = float(s["length_mm"]) / 1000.0
-        diameter_m = (2.0 * float(s["radius_mm"])) / 1000.0
+        side_direct = side_from_endpoints(
+            id_to_xyz,
+            node_side_hint,
+            s["start_id"],
+            s["end_id"],
+            right_is_pos_x,
+            r_x,
+            l_x,
+        )
+        parsed = {
+            "canon": canon,
+            "start_id": int(s["start_id"]),
+            "end_id": int(s["end_id"]),
+            "length_m": float(s["length_mm"]) / 1000.0,
+            "diameter_m": (2.0 * float(s["radius_mm"])) / 1000.0,
+            "side": side_direct,
+        }
+        parsed_segs.append(parsed)
+
+        if side_direct in {"R", "L"}:
+            node_known_sides.setdefault(parsed["start_id"], set()).add(side_direct)
+            node_known_sides.setdefault(parsed["end_id"], set()).add(side_direct)
+
+    # Second pass: fallback to connected known-node side when direct side is missing
+    for p in parsed_segs:
+        canon = p["canon"]
+        side = p["side"]
+
+        if canon not in {"BA", "Acom"} and side is None:
+            side = side_from_connected_known_nodes(
+                p["start_id"],
+                p["end_id"],
+                node_known_sides,
+            )
+            if side is not None:
+                print(
+                    f"   Fallback side inference for {canon}: {side} "
+                    f"(nodes {p['start_id']}->{p['end_id']})"
+                )
 
         # Acom and BA don't have a side because they are midline structures
         if canon in {"BA", "Acom"}:
             key = (None, canon)
         else:
             if side is None:
-                print(f"   Skipping {canon}: could not infer side (nodes {s['start_id']}->{s['end_id']})")
+                print(f"   Skipping {canon}: could not infer side (nodes {p['start_id']}->{p['end_id']})")
                 continue
             key = (side, canon)
 
@@ -544,8 +597,8 @@ Example:
             "key": key,
             "canon": canon,
             "side": side,
-            "length_m": length_m,
-            "diameter_m": diameter_m,
+            "length_m": p["length_m"],
+            "diameter_m": p["diameter_m"],
         })
 
     # the best measurement for each vessel is kept
@@ -645,7 +698,7 @@ Example:
     print(f"  cd {repo_root}/projects/simple_run")
     print(f"  ./simple_run.out {out_model_name}")
     print(f"\nValidate results:")
-    print(f"  python3 {repo_root}/pipeline/validation.py --model {out_model_name}")
+    print(f"  python3 {repo_root}/pipeline/02_numerical_validation.py --model {out_model_name}")
     print("=" * 78)
 
 

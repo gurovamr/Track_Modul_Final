@@ -47,5 +47,5 @@ make -f make_*.mk
 - C++ compiler (clang++ recommended)
 - Eigen
 - make
-- Python 3 (numpy, matplotlib, pandas)
+- Python 3 (numpy, matplotlib, pandas, scipy)
 
