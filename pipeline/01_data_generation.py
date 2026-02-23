@@ -50,7 +50,8 @@ def find_patient_files(data_root: Path, pid: str) -> Tuple[str, Path, Path, Opti
     """Find patient data files."""
     pid = str(pid).zfill(3)
 
-    for modality in ["ct", "mr"]:
+    # Paper-aligned preference: use MRA when both modalities exist.
+    for modality in ["mr", "ct"]:
         feat_a = data_root / "cow_features" / f"topcow_{modality}_{pid}.json"
         nods_a = data_root / "cow_nodes" / f"topcow_{modality}_{pid}.json"
         var_a  = data_root / "cow_variants" / f"topcow_{modality}_{pid}.json"
@@ -63,6 +64,19 @@ def find_patient_files(data_root: Path, pid: str) -> Tuple[str, Path, Path, Opti
             return modality, feat_a, nods_b, (var_a if var_a.exists() else None)
 
     raise FileNotFoundError(f"Could not find patient files for pid={pid}")
+
+
+def load_available_variants(data_root: Path, pid: str) -> Dict[str, Dict[str, Any]]:
+    """Load all available modality-specific variant files for a patient."""
+    pid = str(pid).zfill(3)
+    variants_by_modality: Dict[str, Dict[str, Any]] = {}
+
+    for modality in ["mr", "ct"]:
+        path = data_root / "cow_variants" / f"topcow_{modality}_{pid}.json"
+        if path.exists():
+            variants_by_modality[modality] = load_json(path)
+
+    return variants_by_modality
 
 
 def flatten_nodes(nodes_json: Any):
@@ -275,14 +289,14 @@ def build_firstblood_mapping() -> Dict[Tuple[Optional[str], str], List[str]]:
     }
 
 
-def get_absent_vessels(variants: Optional[Dict]) -> List[Tuple[Optional[str], str]]:
+def get_absent_vessels(variants_by_modality: Optional[Dict[str, Dict[str, Any]]]) -> List[Tuple[Optional[str], str]]:
     """
-    Extract which vessels are missing/abnormal from the variant file.
-    
-    The variant JSON has sections for anterior/posterior/fetal circulation,
-    and each vessel is marked true (present) or false (absent).
+    Resolve absent vessels from modality-specific variant files.
+
+    Union-presence rule is used: a vessel is marked absent only if all
+    available modalities mark it as absent.
     """
-    if not variants:
+    if not variants_by_modality:
         return []
     
     absent = []
@@ -298,12 +312,24 @@ def get_absent_vessels(variants: Optional[Dict]) -> List[Tuple[Optional[str], st
         "L-MCA": ("L", "MCA"), "R-MCA": ("R", "MCA"),
     }
     
-    for section in ["anterior", "posterior", "fetal"]:
-        if section not in variants:
-            continue
-        for var_key, present in variants[section].items():
-            if present is False and var_key in variant_to_key:
-                absent.append(variant_to_key[var_key])
+    per_vessel_presence: Dict[Tuple[Optional[str], str], List[bool]] = {}
+
+    for variants in variants_by_modality.values():
+        for section in ["anterior", "posterior", "fetal"]:
+            if section not in variants:
+                continue
+            for var_key, present in variants[section].items():
+                if var_key not in variant_to_key:
+                    continue
+                if not isinstance(present, bool):
+                    continue
+                key = variant_to_key[var_key]
+                per_vessel_presence.setdefault(key, []).append(bool(present))
+
+    for vessel_key, presence_flags in per_vessel_presence.items():
+        # Union-presence: present if any modality says present.
+        if len(presence_flags) > 0 and not any(presence_flags):
+            absent.append(vessel_key)
     
     return absent
 
@@ -507,11 +533,10 @@ Example:
     nodes = load_json(nodes_path)
     
     # Load anatomical variants
-    variants = None
     absent_vessels = []
-    if variant_path and variant_path.exists():
-        variants = load_json(variant_path)
-        absent_vessels = get_absent_vessels(variants)
+    variants_by_modality = load_available_variants(data_root, pid)
+    if variants_by_modality:
+        absent_vessels = get_absent_vessels(variants_by_modality)
 
     # Extract all the node positions and figure out the left/right orientation
     id_to_xyz, node_side_hint, r_x, l_x = flatten_nodes(nodes)
