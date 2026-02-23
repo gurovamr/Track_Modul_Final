@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import builtins
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -15,6 +16,14 @@ from typing import Optional, List, Tuple, Dict, Any
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+QUIET = False
+
+
+def print(*args, **kwargs):
+    if not QUIET:
+        builtins.print(*args, **kwargs)
 
 
 @dataclass
@@ -733,18 +742,16 @@ def main():
     if not results_dir.exists():
         print("Error: Results directory not found: {}".format(results_dir))
         sys.exit(1)
+
+    global QUIET
+    QUIET = True
     
     model_name = results_dir.name
     output_dir = project_root / 'pipeline' / 'output' / model_name / 'numerical_validation'
-    
-
-    print("Model: {}".format(model_name))
-    print("Results: {}".format(results_dir))
-    print("Output: {}".format(output_dir))
-    print("")
+    builtins.print("Model: {}".format(model_name))
     
     files = discover_timeseries_files(results_dir)
-    print("Found {} timeseries files".format(len(files)))
+    builtins.print("Found {} timeseries files".format(len(files)))
     
 
     integrity_checks = []
@@ -754,10 +761,8 @@ def main():
             check = check_integrity(data, f)
             integrity_checks.append(check)
     
-    print("Checked {} files".format(len(integrity_checks)))
-    
     convergence_results, all_cycles_data = analyze_convergence(results_dir)
-    print("Found convergence data for {} signals".format(len(convergence_results)))
+    builtins.print("Found convergence data for {} signals".format(len(convergence_results)))
     
     write_reports(output_dir, integrity_checks, convergence_results, model_name)
     
@@ -766,11 +771,7 @@ def main():
     plot_aorta_cycle_overlays(results_dir, output_dir, n_cycles=5)
     
 
-    print("Output directory: {}".format(output_dir))
-    print("  - numerical_stability_report.txt")
-    print("  - numerical_stability_report.json")
-    print("  - signal_overlay_*.png (if data available)")
-    print("")
+    builtins.print("Output directory: {}".format(output_dir))
 
 
 if __name__ == "__main__":

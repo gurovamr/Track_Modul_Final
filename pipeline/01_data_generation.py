@@ -415,8 +415,6 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
     if not peripherals:
         raise ValueError("No peripheral nodes (p1, p2, ...) found in arterial.csv")
     
-    print(f"  Found {len(peripherals)} peripheral terminal nodes")
-    
     # Build a map of which arterial node feeds into each peripheral
     peripheral_to_node = {}
     for _, row in arterial_df.iterrows():
@@ -426,7 +424,6 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
         if end_node.startswith('p') and end_node[1:].isdigit():
             start_node = str(row['start_node']).strip()
             peripheral_to_node[end_node] = start_node
-            print(f"    {end_node} <- {start_node}")
     
     lines = [
         "run,forward",
@@ -466,9 +463,6 @@ def generate_correct_main_csv(arterial_df: pd.DataFrame, output_path: Path, time
     
     with open(output_path, 'w') as f:
         f.write('\n'.join(lines))
-    
-    print(f"  Generated main.csv:")
-    print(f"    {len(peripherals)} peripherals with correct feeding connections")
 
 
 def main():
@@ -518,11 +512,6 @@ Example:
     if variant_path and variant_path.exists():
         variants = load_json(variant_path)
         absent_vessels = get_absent_vessels(variants)
-        if absent_vessels:
-            print(f"Anatomical variants loaded: {len(absent_vessels)} absent vessels")
-            for av in absent_vessels:
-                side, canon = av
-                print(f"  - {side or ''}-{canon}: ABSENT")
 
     # Extract all the node positions and figure out the left/right orientation
     id_to_xyz, node_side_hint, r_x, l_x = flatten_nodes(nodes)
@@ -578,18 +567,12 @@ Example:
                 p["end_id"],
                 node_known_sides,
             )
-            if side is not None:
-                print(
-                    f"   Fallback side inference for {canon}: {side} "
-                    f"(nodes {p['start_id']}->{p['end_id']})"
-                )
 
         # Acom and BA don't have a side because they are midline structures
         if canon in {"BA", "Acom"}:
             key = (None, canon)
         else:
             if side is None:
-                print(f"   Skipping {canon}: could not infer side (nodes {p['start_id']}->{p['end_id']})")
                 continue
             key = (side, canon)
 
@@ -609,8 +592,6 @@ Example:
             patient_geom[key] = c
 
     print(f"Kept {len(patient_geom)} unique CoW measurements")
-    print("-" * 78)
-
     # Create output directory
     if out_dir.exists():
         if not args.force:
@@ -623,15 +604,12 @@ Example:
         raise FileNotFoundError(f"Missing arterial.csv in template")
 
     # Copy all the template files 
-    print("\nStep 1: Copying template files...")
     copied = 0
     for src in template_dir.glob("*.csv"):
         shutil.copy(src, out_dir / src.name)
         copied += 1
-    print(f"  Copied {copied} CSV files")
 
     # Load the arterial.csv file and insert patient data
-    print("\nStep 2:  patient-specific CoW geometry...")
     arterial_path = out_dir / "arterial.csv"
     df = pd.read_csv(arterial_path)
 
@@ -670,7 +648,6 @@ Example:
 
     # Handle any anatomical variants
     if absent_vessels:
-        print(f"\nStep 2b: Marking {len(absent_vessels)} absent vessels...")
         for av_key in absent_vessels:
             if av_key in fb_map:
                 for fb_id in fb_map[av_key]:
@@ -680,26 +657,20 @@ Example:
                         pk = f"{side or ''}-{canon}_ABSENT"
                         mod.update({"Patient_key": pk})
                         modifications.append(mod)
-                        print(f"    {fb_id} ({mod['Name']}): marked absent")
 
     # Save modified arterial.csv
     df.to_csv(arterial_path, index=False)
-    print(f"  Modified {len(modifications)} CoW vessels total")
-
-    print("\nStep 3: Keeping template main.csv...")
 
     # Save log
     pd.DataFrame(modifications).to_csv(out_dir / "modifications_log.csv", index=False)
 
 
-    print("=" * 78)
     print(f"Output: {out_dir}")
     print(f"\nRun simulation:")
     print(f"  cd {repo_root}/projects/simple_run")
     print(f"  ./simple_run.out {out_model_name}")
     print(f"\nValidate results:")
     print(f"  python3 {repo_root}/pipeline/02_numerical_validation.py --model {out_model_name}")
-    print("=" * 78)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import builtins
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,6 +15,14 @@ from collections import deque, defaultdict
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+QUIET = False
+
+
+def print(*args, **kwargs):
+    if not QUIET:
+        builtins.print(*args, **kwargs)
 
 
 PRESSURE_BASELINE = 101325
@@ -1929,26 +1938,17 @@ def main():
     
     bio_analysis_dir = output_root / model_name / 'biological_analysis'
     metrics_file = bio_analysis_dir / 'global_metrics.csv'
-    
-    print("")
-    print("=" * 80)
-    print("FirstBlood Visualization Pipeline")
-    print("=" * 80)
-    print("Model:        {}".format(model_name))
-    print("Results dir:  {}".format(results_dir))
-    print("Output dir:   {}".format(output_dir))
-    print("")
+
+    global QUIET
+    QUIET = True
+    builtins.print("Model: {}".format(model_name))
     
     metrics = load_global_metrics(metrics_file)
     
     if metrics is not None:
-        print("Loaded metrics from biological_analysis")
         period = metrics.get('cycle_period_s', None)
     else:
-        print("No biological_analysis metrics found, will estimate period")
         period = None
-    
-    print("\nCreating visualizations...")
     
     make_aortic_pressure_last_cycle(results_dir, output_dir, period)
     make_aortic_pressure_cycle_overlay(results_dir, output_dir, period)
@@ -1977,12 +1977,7 @@ def main():
             output_dir
         )
     
-    print("")
-    print("=" * 80)
-    print("Visualization Complete")
-    print("=" * 80)
-    print("Output directory: {}".format(output_dir))
-    print("")
+    builtins.print("Output directory: {}".format(output_dir))
 
 
 if __name__ == "__main__":

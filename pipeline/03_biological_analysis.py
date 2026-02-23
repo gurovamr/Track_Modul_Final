@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import builtins
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -13,6 +14,14 @@ from typing import Optional, List, Tuple, Dict, Any
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+QUIET = False
+
+
+def print(*args, **kwargs):
+    if not QUIET:
+        builtins.print(*args, **kwargs)
 
 
 PRESSURE_BASELINE = 101325
@@ -908,40 +917,31 @@ def main():
         output_dir = output_root / model_name / 'biological_analysis'
     else:
         output_dir = project_root / 'pipeline' / 'output' / model_name / 'biological_analysis'
-    
-    print("")
-    print("=" * 80)
-    print("BIOLOGICAL VALIDATION ANALYSIS")
-    print("=" * 80)
-    print("Model:        {}".format(model_name))
-    print("Results dir:  {}".format(results_dir))
-    print("Output dir:   {}".format(output_dir))
-    print("")
+
+    global QUIET
+    QUIET = True
+    builtins.print("Model: {}".format(model_name))
     
     pressure_file, _velocity_file, _diameter_file = choose_aortic_signals(results_dir)
     
     if pressure_file is None:
-        print("Error: Could not locate aortic signals.")
+        builtins.print("Error: Could not locate aortic signals.")
         sys.exit(1)
-    
-    print("Found aortic pressure: {}".format(pressure_file.name))
     
     data_p = load_timeseries(pressure_file)
     if data_p is None:
-        print("Error: Could not load pressure data.")
+        builtins.print("Error: Could not load pressure data.")
         sys.exit(1)
     
     time_col_idx = detect_time_column(data_p)
     if time_col_idx is None:
-        print("Error: Could not detect time column.")
+        builtins.print("Error: Could not detect time column.")
         sys.exit(1)
     
     pressure_col_idx = select_pulsatile_column(data_p, time_col_idx)
     if pressure_col_idx is None:
-        print("Error: Could not detect pulsatile pressure column.")
+        builtins.print("Error: Could not detect pulsatile pressure column.")
         sys.exit(1)
-    
-    print("Selected pressure column index: {}".format(pressure_col_idx))
     
     time_col = data_p[:, time_col_idx]
     pressure_col = data_p[:, pressure_col_idx]
@@ -1038,16 +1038,10 @@ def main():
     for line in build_cerebral_summary_lines(cerebral_flows, q_brain_mlmin, brain_fraction)[2:-1]:
         print("  {}".format(line))
     
-    print("\nWriting outputs...")
     write_summary_and_csv(metrics, output_dir, cerebral_flows, q_brain_mlmin, brain_fraction)
     make_plots(results_dir, output_dir, pressure_file, co_file)
-    
-    print("")
-    print("=" * 80)
-    print("ANALYSIS COMPLETE")
-    print("=" * 80)
-    print("Output directory: {}".format(output_dir))
-    print("")
+
+    builtins.print("Output directory: {}".format(output_dir))
 
 
 if __name__ == "__main__":
